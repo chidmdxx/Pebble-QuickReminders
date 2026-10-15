@@ -2,9 +2,11 @@
 
 var parser = require('./parser');
 var reminders = require('./lib/reminders');
+var settings = require('./settings');
 
 function create(storage, pebble, clock) {
   var store = reminders.create(storage, pebble, clock);
+  var preferences = settings.create(storage);
 
   function view(record) {
     if (!record || record.state === 'canceled') return { STATUS: 'home', TOKEN: 0 };
@@ -38,7 +40,7 @@ function create(storage, pebble, clock) {
     var command = message.COMMAND;
     var record;
     if (command === 'ready') return view(store.read());
-    if (command === 'parse') return view(store.next(parser.parse(message.TEXT, clock())));
+    if (command === 'parse') return view(store.next(parser.parse(message.TEXT, clock(), preferences.read())));
     if (command === 'title') {
       record = current(message.TOKEN);
       parser.validate(record.value, clock(), 'edit');

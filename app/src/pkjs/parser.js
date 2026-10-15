@@ -3,6 +3,7 @@
 var MINUTE = 60000;
 var DAY = 24 * 60 * MINUTE;
 var MAX_TITLE_BYTES = 160;
+var defaults = require('./defaults');
 var weekdays = [
   ['sunday', 'domingo'], ['monday', 'lunes'], ['tuesday', 'martes'],
   ['wednesday', 'miércoles', 'miercoles'], ['thursday', 'jueves'],
@@ -279,7 +280,10 @@ function draft(what, instant, reference) {
   };
 }
 
-function parse(text, reference) {
+function parse(text, reference, settings) {
+  settings = defaults.validate(settings === undefined ? defaults.initial : settings);
+  var amTime = settings.amTime.split(':').map(Number);
+  var pmTime = settings.pmTime.split(':').map(Number);
   if (typeof text !== 'string' || !text.trim() || text.length > 512) fail('Dictate a short reminder.');
   if (!validInstant(reference)) fail('Phone clock is invalid.');
   var input = stripPrompt(text.trim().replace(/\s+/g, ' '));
@@ -374,20 +378,21 @@ function parse(text, reference) {
       what = input.slice(0, index).trim();
       var dayOnly = dayOnlyPattern.exec(input.slice(index));
       if (dayOnly && !morningContext(what)) {
-        candidates.push({ title: what, tail: dayOnly[2] || '', day: dayOnly[1].toLowerCase(), time: [10, 0] });
+        candidates.push({ title: what, tail: dayOnly[2] || '', day: dayOnly[1].toLowerCase(), time: amTime });
       }
     }
     if (!candidates.length) {
       var firstDay = new RegExp('^' + dayClause + ' (.+)$', 'i').exec(input);
-      if (firstDay) candidates.push({ title: firstDay[2], day: firstDay[1].toLowerCase(), time: [10, 0] });
+      if (firstDay) candidates.push({ title: firstDay[2], day: firstDay[1].toLowerCase(), time: amTime });
     }
     if (!candidates.length) {
       if (containsDay(input) || competingSchedule(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
       var now = new Date(reference);
-      var nextDay = now.getHours() >= 20;
+      var nextDay = now.getHours() * 60 + now.getMinutes() >= pmTime[0] * 60 + pmTime[1];
+      var defaultTime = nextDay ? amTime : pmTime;
       var targetDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (nextDay ? 1 : 0), 12);
       return draft(input, resolveWall([
-        targetDay.getFullYear(), targetDay.getMonth() + 1, targetDay.getDate(), nextDay ? 10 : 20, 0
+        targetDay.getFullYear(), targetDay.getMonth() + 1, targetDay.getDate(), defaultTime[0], defaultTime[1]
       ]), reference);
     }
     defaulted = true;

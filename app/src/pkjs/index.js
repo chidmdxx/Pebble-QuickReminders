@@ -1,6 +1,8 @@
 'use strict';
 
 var controller = require('./controller').create(localStorage, Pebble, Date.now);
+var settings = require('./settings');
+var preferences = settings.create(localStorage);
 var queue = [];
 var sending = false;
 
@@ -47,6 +49,13 @@ function receive(message) {
     }
     console.error('QuickReminders: request failed.');
   }
+  try {
+    var configuration = preferences.message();
+    response.RIBBON_COLOR = configuration.RIBBON_COLOR;
+    response.AUTO_CLOSE = configuration.AUTO_CLOSE;
+  } catch (error) {
+    console.error('QuickReminders: settings unavailable. Open Settings to recover.');
+  }
   response.COMMAND = message && typeof message.COMMAND === 'string' ? message.COMMAND : 'invalid';
   response.REQUEST_ID = message && typeof message.REQUEST_ID === 'number' ? message.REQUEST_ID : 0;
   queue.push({ payload: response, attempts: 0 });
@@ -55,3 +64,34 @@ function receive(message) {
 
 Pebble.addEventListener('ready', function() { receive({ COMMAND: 'ready' }); });
 Pebble.addEventListener('appmessage', function(event) { receive(event.payload); });
+
+Pebble.addEventListener('showConfiguration', function() {
+  var value;
+  var failed = false;
+  try {
+    value = preferences.read();
+  } catch (error) {
+    failed = true;
+    value = require('./defaults').initial;
+    console.error('QuickReminders: settings unavailable. Save Settings to recover.');
+  }
+  Pebble.openURL(settings.page(value, failed));
+});
+
+Pebble.addEventListener('webviewclosed', function(event) {
+  if (!event || !event.response || event.response === 'CANCELLED') return;
+  var value;
+  try {
+    value = preferences.save(JSON.parse(decodeURIComponent(event.response)));
+  } catch (error) {
+    console.error('QuickReminders: settings not saved.');
+    Pebble.openURL(settings.page(require('./defaults').initial, true));
+    return;
+  }
+  queue.push({ payload: {
+    COMMAND: 'settings',
+    RIBBON_COLOR: value.ribbonColor,
+    AUTO_CLOSE: value.autoClose ? 1 : 0
+  }, attempts: 0 });
+  flush();
+});

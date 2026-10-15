@@ -9,7 +9,7 @@ Private, timeline-only voice reminders for Pebble Round 2 (`gabbro`) and an Andr
 1. Open the app: Pebble's native microphone starts immediately, including when a previous insertion is saved. If transcription finishes before phone JS is ready, the app retains it until readiness is acknowledged. Dictation itself never replays or inserts a pin. **Back while recording exits the app**, leaving any saved record unchanged.
 2. The phone interprets a supported English, Spanish or mixed-language phrase using its local clock and timezone. There is no separate native transcript-approval screen.
 3. The parsed draft opens directly, with Pebble's native right-hand action bar. Check the complete title, local date/time and relative estimate, such as **In 2h 20m**, then press **Select** (check mark) to request one timeline pin with one alert. Up/Down pages through long text; a long draft must be read to the bottom first. Text follows the round screen's contour through the full available height beside the action bar, rather than a fixed rectangular inset. The final page stays aligned so its last line is not forced against the circular rim. A short draft needs no extra review/menu step. The date/time uses the phone's timezone, but the card does not display a timezone line.
-4. Once the phone returns a matching, error-free insertion response, the app closes to the watch face. **Check Timeline**: this response is not a delivery acknowledgement. Errors, lost replies and timeouts keep the app open with recovery guidance.
+4. Once the phone returns a matching, error-free insertion response, the app closes to the watch face by default. With **Auto-close after saving** disabled, it stays on a saved notice: Select records another reminder; Back exits. **Check Timeline**: this response is not a delivery acknowledgement. Errors, lost replies and timeouts keep the app open with recovery guidance.
 5. **Back on an unsubmitted confirmation declines that draft and records again**, after the phone acknowledges cancellation. Change a title or time by dictating a corrected reminder. Holding Select does nothing and cannot confirm on release. There is no root, debug or manual-date menu.
 
 Canceling or failing dictation does not replace a saved record. Genuine speech errors, phone failures and timeouts stay visible in the same scrolling confirmation component. An uncertain phone response requires **Select: reload saved state** before another mutation; **Back** exits that recovery card. A recovered pending insertion shows the delivery caveat and offers explicit **Select: retry same pin** only after it has been read to the bottom. Back from that pending card records again without canceling or deleting the existing pin. The watch's navigation labels remain English; reminder titles retain their original language.
@@ -71,7 +71,7 @@ Without AM/PM or a day period, hours 1-12 use the next future AM or PM occurrenc
 
 `Next Wednesday`, `el próximo lunes` and `el lunes que viene` mean the next occurrence of that weekday strictly after today, not necessarily the following calendar week. `This Wednesday` and bare weekdays still include today. A month/day without a year, such as `on November 21` or `el 17 de mayo`, uses its next occurrence, at 10 AM when no clock is given. On that date, a passed clock rolls the year forward; explicit ISO dates never roll. Invalid calendar dates, DST gaps/overlaps and dates outside the 366-day limit still require another time.
 
-When time is omitted, the defaults are:
+When time is omitted, the factory defaults are shown below. The AM and PM times can be changed in companion settings:
 
 - **Named day:** 10 AM on that day. `Tomorrow` and standalone `mañana` mean the next day; `today/hoy`, weekdays and ISO dates use their specified day.
 - **No day or time:** 8 PM today if the phone's local time is before 8 PM; at or after 8 PM, 10 AM tomorrow.
@@ -88,6 +88,21 @@ This is deliberately not unrestricted natural-language recognition.
 ### Reference flow: Recordatorios
 
 For comparison, public [Recordatorios](https://apps.rebble.io/en_US/application/584613b5ca3094659f000af8) version 1.14-rbl1 was installed in the original Round (`chalk`) emulator; its package has no native `gabbro` binary. With synthetic English and Spanish transcripts, the observed flow was **launch > microphone > parsed title/date confirmation > one Select**. There was no separate transcript-approval or date-picker step. Submission ended with **Unable to send timeline pin** in that simulator, so this verifies its interaction flow, not delivery or Round 2 compatibility. No Recordatorios source or assets were imported.
+
+## Settings
+
+In the Pebble phone companion, open **Quick Reminders > Settings** (the gear icon). The configuration page is bundled with the app and needs no hosted website or network connection.
+
+| Setting | Initial value | Behavior |
+| --- | --- | --- |
+| AM default time | 10:00 AM | Used for a named day with no clock, or tomorrow when today's PM default has passed. Accepts any AM hour and minute. |
+| PM default time | 8:00 PM | Used today when no day or time is spoken, if strictly ahead of the phone's local clock. At or after this minute, use tomorrow's AM default. Accepts any PM hour and minute. |
+| Ribbon color | Deep red | Deep red, dark blue, dark green, purple or black; the checkmark stays white. |
+| Auto-close after saving | On | Return to the watch face after a matching successful insertion response. When off, keep a saved notice with the delivery caveat, Select to record again and Back to exit. |
+
+Save applies the times to new dictation only. An existing draft or pin keeps its original instant; explicit spoken times, relative durations, mandatory confirmation and recovery safeguards do not change. Named-day defaults that have already passed and DST gaps or overlaps still require another time.
+
+Settings are saved separately from reminder recovery data in phone-local `localStorage`. Ribbon color and auto-close are also cached on the watch for startup, updated when settings are saved, and synchronized with normal phone replies if the watch was unavailable. Cancel leaves settings unchanged. Invalid values and storage failures reopen the page with an error; invalid saved settings can be repaired by explicitly saving the page again without clearing reminder data.
 
 ## Build and sideload
 
@@ -163,6 +178,7 @@ On an authorized phone and Round 2, use synthetic reminders to check:
 - Dictation cancel/error paths insert nothing. Confirmation Back cancels an unsubmitted draft, then records once after safe acknowledgement; cancellation failure stays visible and recoverable.
 - A short draft confirms directly with Select; a long draft requires reading to the end. A held Select or late release must never confirm a new card.
 - An explicit tomorrow-at-8-AM clause before a topic preserves the topic and shows the intended date/time without a timezone line. Named-day-only requests show 10 AM; unscheduled requests show 8 PM today or 10 AM tomorrow according to the cutoff.
+- Open companion settings, save custom AM/PM minutes and a ribbon color, reopen the page and app, and verify both persistence and the PM cutoff. Cancel must preserve the saved values. Saving settings while reviewing a draft must not move its instant or insert a pin. With auto-close disabled, successful insertion must show the delivery caveat without exposing a retry action; Select records again and Back exits.
 - Long titles and status messages can be read fully on the round screen.
 - Confirmation produces one pin and one timely reminder, with no duplicate alert.
 - Lost Bluetooth/messages and app/phone restarts preserve recovery identity without automatic replay.

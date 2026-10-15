@@ -13,25 +13,27 @@ function phone(customController, clock) {
   const deliveries = [];
   const logs = [];
   const timers = [];
-  let raw = null;
-  const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
+  const data = new Map();
+  const storage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => { data.set(key, value); } };
   const pins = [];
+  const urls = [];
   const pebble = {
     addEventListener: (name, callback) => { listeners[name] = callback; },
     sendAppMessage: (payload, success, failure) => deliveries.push({ payload, success, failure }),
-    insertTimelinePin: pin => pins.push(pin)
+    insertTimelinePin: pin => pins.push(pin),
+    openURL: url => urls.push(url)
   };
   const fixedClock = clock || (() => Date.UTC(2026, 9, 14, 12));
   const context = {
-    require: () => customController || {
+    require: name => name === './controller' ? customController || {
       create: (store, platform) => realController.create(store, platform, fixedClock)
-    },
+    } : require('../app/src/pkjs/' + name),
     localStorage: storage, Pebble: pebble, Date,
     setTimeout: callback => timers.push(callback),
     console: { error: value => logs.push(value) }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app/src/pkjs/index.js'), 'utf8'), context);
-  return { listeners, deliveries, logs, timers, pins, pebble };
+  return { listeners, deliveries, logs, timers, pins, pebble, urls, storage };
 }
 
 test('actual phone entrypoint serializes delivery and creates no pin before confirmation', () => {
@@ -321,4 +323,76 @@ test('timezone travel keeps an unsubmitted draft recoverable but never confirmab
     if (previous === undefined) delete process.env.TZ;
     else process.env.TZ = previous;
   }
+});
+
+test('companion settings save, synchronize with bounded delivery, and survive cancellation and invalid input', () => {
+  const f = phone();
+  const preferences = require('../app/src/pkjs/settings').create(f.storage);
+  const value = { amTime: '08:30', pmTime: '19:15', ribbonColor: 226, autoClose: false };
+  f.listeners.showConfiguration();
+  assert.match(f.urls[0], /^data:text\/html/);
+  f.listeners.webviewclosed({ response: encodeURIComponent(JSON.stringify(value)) });
+  assert.deepEqual(preferences.read(), value);
+  assert.equal(f.deliveries[0].payload.COMMAND, 'settings');
+  assert.equal(f.deliveries[0].payload.RIBBON_COLOR, 226);
+  assert.equal(f.deliveries[0].payload.AUTO_CLOSE, 0);
+  f.deliveries[0].success();
+  for (const response of [undefined, '', 'CANCELLED']) f.listeners.webviewclosed({ response });
+  assert.equal(f.deliveries.length, 1);
+  assert.deepEqual(preferences.read(), value);
+  for (const response of ['%', '{}', 'null']) f.listeners.webviewclosed({ response });
+  assert.deepEqual(preferences.read(), value);
+  assert.equal(f.deliveries.length, 1);
+  assert.equal(f.urls.length, 4);
+  f.listeners.ready();
+  assert.equal(f.deliveries[1].payload.RIBBON_COLOR, 226);
+  assert.equal(f.deliveries[1].payload.AUTO_CLOSE, 0);
+  assert.equal(f.pins.length, 0);
+});
+
+test('configuration storage failures are visible, recoverable, and never change reminder storage', () => {
+  const f = phone();
+  f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: 'Test in five minutes' } });
+  f.deliveries[0].success();
+  const saved = f.storage.getItem('quickreminders.pending.v1');
+  f.storage.setItem('quickreminders.settings.v1', '{');
+  f.listeners.showConfiguration();
+  assert.match(decodeURIComponent(f.urls[0]), /Could not load or save settings/);
+  const setItem = f.storage.setItem;
+  f.storage.setItem = () => { throw new Error('Private disk failure'); };
+  f.listeners.webviewclosed({ response: encodeURIComponent(JSON.stringify({
+    amTime: '08:30', pmTime: '19:15', ribbonColor: 226, autoClose: false
+  })) });
+  assert.match(decodeURIComponent(f.urls[1]), /Could not load or save settings/);
+  assert.equal(f.deliveries.length, 1);
+  assert.doesNotMatch(f.logs.join(''), /Private disk failure|Test in five minutes/);
+  assert.equal(f.storage.getItem('quickreminders.pending.v1'), saved);
+  f.storage.setItem = setItem;
+  f.listeners.webviewclosed({ response: encodeURIComponent(JSON.stringify(require('../app/src/pkjs/defaults').initial)) });
+  assert.equal(f.deliveries[1].payload.COMMAND, 'settings');
+  assert.equal(f.storage.getItem('quickreminders.pending.v1'), saved);
+});
+
+test('settings share the serialized queue and retry on later replies after bounded synchronization failure', () => {
+  const f = phone();
+  f.listeners.ready();
+  f.listeners.webviewclosed({ response: encodeURIComponent(JSON.stringify({
+    amTime: '08:30', pmTime: '19:15', ribbonColor: 226, autoClose: false
+  })) });
+  assert.equal(f.deliveries.length, 1);
+  f.deliveries[0].success();
+  assert.equal(f.deliveries[1].payload.COMMAND, 'settings');
+  for (let i = 1; i <= 3; i++) {
+    f.deliveries[i].failure();
+    if (i < 3) f.timers.shift()();
+  }
+  assert.equal(f.timers.length, 0);
+  f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 5, TEXT: 'Test in five minutes' } });
+  const draft = f.deliveries[4].payload;
+  assert.equal(draft.REQUEST_ID, 5);
+  assert.equal(draft.COMMAND, 'parse');
+  assert.equal(draft.RIBBON_COLOR, 226);
+  assert.equal(draft.AUTO_CLOSE, 0);
+  assert.equal(draft.STATUS, 'draft');
+  assert.equal(f.pins.length, 0);
 });

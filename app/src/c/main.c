@@ -5,6 +5,7 @@
 #define REVIEW_INSET 6
 #define TITLE_DESCENDER_PAD 8
 #define DETAILS_LINE_HEIGHT 24
+#define SETTINGS_KEY 1
 
 static Window *s_review_window;
 static ScrollLayer *s_scroll;
@@ -27,6 +28,8 @@ static bool s_dictating, s_reload_required, s_show_transcript, s_transcript_pend
 static bool s_alive, s_select_held, s_wait_visible, s_cancel_to_record;
 static bool s_capture_failed;
 static int32_t s_request;
+static int32_t s_ribbon_color = 224;
+static bool s_auto_close = true, s_saved_notice;
 
 static void render_review(void);
 static void show_review(void);
@@ -224,6 +227,7 @@ static void review_back(ClickRecognizerRef recognizer, void *context) {
     return;
   }
   if (s_busy) return;
+  if (s_saved_notice) { exit_app(); return; }
   s_select_held = true;
   if (s_reload_required) { exit_app(); return; }
   if (s_draft) {
@@ -364,7 +368,8 @@ static void review_load(Window *window) {
   }
   if (s_action_bar && icons_ready) {
     action_bar_layer_add_to_window(s_action_bar, window);
-    action_bar_layer_set_background_color(s_action_bar, GColorDarkCandyAppleRed);
+    action_bar_layer_set_background_color(s_action_bar, GColorFromRGB(
+      ((s_ribbon_color >> 4) & 3) * 85, ((s_ribbon_color >> 2) & 3) * 85, (s_ribbon_color & 3) * 85));
     action_bar_layer_set_icon_press_animation(s_action_bar, BUTTON_ID_SELECT, ActionBarLayerIconPressAnimationNone);
     action_bar_layer_set_click_config_provider(s_action_bar, review_clicks);
   } else {
@@ -431,6 +436,7 @@ static void dictate(void) {
   if (!s_alive || s_dictating) return;
   if (s_reload_required) { show_notice(); return; }
   s_show_transcript = false;
+  s_saved_notice = false;
   s_capture_failed = false;
   s_select_held = true;
   s_notice[0] = '\0';
@@ -470,12 +476,43 @@ static bool read_integer(const Tuple *tuple, int32_t *value) {
   return *value >= 0;
 }
 
+static bool valid_ribbon(int32_t color) {
+  return color == 224 || color == 194 || color == 200 || color == 226 || color == 192;
+}
+
+static void apply_settings(DictionaryIterator *iterator) {
+  Tuple *ribbon = dict_find(iterator, MESSAGE_KEY_RIBBON_COLOR);
+  Tuple *auto_close = dict_find(iterator, MESSAGE_KEY_AUTO_CLOSE);
+  if (!ribbon && !auto_close) return;
+  int32_t color, close;
+  if (!read_integer(ribbon, &color) || !valid_ribbon(color) ||
+      !read_integer(auto_close, &close) || close > 1) {
+    APP_LOG(APP_LOG_LEVEL_WARNING, "Invalid phone settings; keeping saved preferences.");
+    return;
+  }
+  int32_t packed = color | (close << 8);
+  if (!persist_exists(SETTINGS_KEY) || persist_read_int(SETTINGS_KEY) != packed) {
+    if (persist_write_int(SETTINGS_KEY, packed) < 0)
+      APP_LOG(APP_LOG_LEVEL_WARNING, "Could not persist watch settings.");
+  }
+  s_ribbon_color = color;
+  s_auto_close = close == 1;
+  if (s_action_bar) action_bar_layer_set_background_color(s_action_bar, GColorFromRGB(
+    ((color >> 4) & 3) * 85, ((color >> 2) & 3) * 85, (color & 3) * 85));
+}
+
 static void receive(DictionaryIterator *iterator, void *context) {
   (void)context;
-  if (!s_alive || !s_busy) return;
+  if (!s_alive) return;
+  Tuple *command = dict_find(iterator, MESSAGE_KEY_COMMAND);
+  if (command && command->type == TUPLE_CSTRING &&
+      strcmp(command->value->cstring, "settings") == 0) {
+    apply_settings(iterator);
+    return;
+  }
+  if (!s_busy) return;
   Tuple *status = dict_find(iterator, MESSAGE_KEY_STATUS);
   if (!status || status->type != TUPLE_CSTRING) return;
-  Tuple *command = dict_find(iterator, MESSAGE_KEY_COMMAND);
   bool matches = command && command->type == TUPLE_CSTRING &&
                  strcmp(command->value->cstring, s_last_command) == 0;
   int32_t request;
@@ -525,6 +562,7 @@ static void receive(DictionaryIterator *iterator, void *context) {
   }
   APP_LOG(APP_LOG_LEVEL_INFO, "Reply: token bytes=%u, confirm bytes=%u",
           (unsigned)token->length, can_confirm ? (unsigned)can_confirm->length : 0);
+  apply_settings(iterator);
   s_reload_required = false;
   s_token = token_value;
   s_draft = strcmp(status->value->cstring, "draft") == 0;
@@ -544,7 +582,13 @@ static void receive(DictionaryIterator *iterator, void *context) {
            error && error->type == TUPLE_CSTRING ? error->value->cstring :
            "");
   if (insertion_reply && s_pending && !has_error) {
-    exit_app();
+    if (s_auto_close) exit_app();
+    else {
+      s_saved_notice = true;
+      snprintf(s_notice, sizeof(s_notice),
+               "Insertion requested. Check Timeline; delivery is not confirmed.\n\nSelect: record another\nBack: exit");
+      show_notice();
+    }
     return;
   }
   if (s_dictating) return;
@@ -585,6 +629,16 @@ static void outbox_failed(DictionaryIterator *iterator, AppMessageResult reason,
 static void init(void) {
   s_alive = true;
   s_busy = true;
+  s_saved_notice = false;
+  s_ribbon_color = 224;
+  s_auto_close = true;
+  if (persist_exists(SETTINGS_KEY)) {
+    int32_t packed = persist_read_int(SETTINGS_KEY);
+    if (packed >= 0 && packed <= 511 && valid_ribbon(packed & 255)) {
+      s_ribbon_color = packed & 255;
+      s_auto_close = (packed & 256) != 0;
+    } else APP_LOG(APP_LOG_LEVEL_WARNING, "Invalid saved watch settings; awaiting phone.");
+  }
   snprintf(s_last_command, sizeof(s_last_command), "ready");
   s_review_window = window_create();
   window_set_window_handlers(s_review_window, (WindowHandlers){.load = review_load, .unload = review_unload});

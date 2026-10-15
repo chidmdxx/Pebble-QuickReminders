@@ -17,6 +17,8 @@
 #define MESSAGE_KEY_ERROR 10007
 #define MESSAGE_KEY_SECONDS_UNTIL 10008
 #define MESSAGE_KEY_REQUEST_ID 10009
+#define MESSAGE_KEY_RIBBON_COLOR 10010
+#define MESSAGE_KEY_AUTO_CLOSE 10011
 #define ACTION_BAR_WIDTH 34
 #define FONT_KEY_GOTHIC_24 "24"
 #define FONT_KEY_GOTHIC_24_BOLD "24-bold"
@@ -47,6 +49,7 @@ typedef struct { uint8_t data[32]; GColor *palette; bool palette_owned; } GBitma
 #define GColorClear 0x00
 #define GColorWhite 0xff
 #define GColorDarkCandyAppleRed 0xe0
+#define GColorFromRGB(r, g, b) ((GColor)(0xc0 | (((r) >> 6) << 4) | (((g) >> 6) << 2) | ((b) >> 6)))
 #define ActionBarLayerIconPressAnimationNone 0
 typedef struct {
   Window *window;
@@ -110,6 +113,10 @@ static AppTimer fake_timers[512];
 static int fake_timer_count;
 static int fake_outbox_result, fake_begin_result;
 static int fake_dictation_stops;
+static int32_t fake_settings = -1;
+static bool persist_exists(uint32_t key) { (void)key; return fake_settings >= 0; }
+static int32_t persist_read_int(uint32_t key) { (void)key; return fake_settings; }
+static int persist_write_int(uint32_t key, int32_t value) { (void)key; fake_settings = value; return 4; }
 
 static void fake_app_log(int level, const char *format, ...) { (void)level; (void)format; }
 static GRect layer_get_bounds(Layer *p) { return p->bounds; }

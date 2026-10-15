@@ -36,6 +36,20 @@ static void reply(const char *status, const char *error, int token, int width) {
   response(status, error, token, width, s_last_command, 1200, s_request);
 }
 
+static void configuration(int color, int close) {
+  TupleValue values[3] = {0};
+  snprintf(values[0].cstring, sizeof(values[0].cstring), "settings");
+  values[1].int32 = color;
+  values[2].int32 = close;
+  Tuple tuples[] = {
+    {MESSAGE_KEY_COMMAND, TUPLE_CSTRING, 9, &values[0]},
+    {MESSAGE_KEY_RIBBON_COLOR, TUPLE_INT, 4, &values[1]},
+    {MESSAGE_KEY_AUTO_CLOSE, TUPLE_INT, 4, &values[2]}
+  };
+  DictionaryIterator iterator = {tuples, 3};
+  receive(&iterator, NULL);
+}
+
 static void click(int button) {
   if (fake_raw_down[button]) fake_raw_down[button](NULL, NULL);
   fake_clicks[button](NULL, NULL);
@@ -409,6 +423,78 @@ int main(void) {
   click(BUTTON_ID_SELECT);
   reply("home", NULL, 0, 4);
   assert(s_busy && !s_transcript_pending && !strcmp(fake_command, "parse"));
+  finish();
+
+  // Settings are independent of the request lifecycle, even while awaiting insertion.
+  start();
+  draft();
+  sent = fake_sends;
+  configuration(194, 0);
+  assert(!s_busy && s_draft && s_reviewed && s_can_confirm && fake_sends == sent);
+  assert(s_action_bar->background_color == 194 && !s_auto_close);
+  configuration(255, 1);
+  configuration(224, 2);
+  configuration(-1, 1);
+  assert(s_action_bar->background_color == 194 && !s_auto_close);
+  click(BUTTON_ID_SELECT);
+  AppTimer *insertion_timeout = s_timeout;
+  int insertion_request = s_request;
+  configuration(226, 0);
+  assert(s_busy && s_timeout == insertion_timeout && s_request == insertion_request);
+  assert(s_action_bar->background_color == 226 && fake_sends == sent + 1);
+  reply("pending", NULL, 1, 4);
+  assert(s_alive && !s_busy && s_saved_notice && !s_reviewing_reminder);
+  assert(strstr(s_review, "Check Timeline") && strstr(s_review, "delivery is not confirmed"));
+  assert(!insertion_timeout->active);
+  sent = fake_sends;
+  click(BUTTON_ID_SELECT);
+  assert(s_dictating && !s_saved_notice && fake_sends == sent);
+  finish();
+
+  // Cached preferences apply before phone readiness; Back exits the saved notice.
+  start();
+  assert(s_ribbon_color == 226 && !s_auto_close && s_action_bar->background_color == 226);
+  configuration(224, 0);
+  draft();
+  click(BUTTON_ID_SELECT);
+  reply("pending", NULL, 1, 4);
+  assert(s_alive && s_saved_notice);
+  sent = fake_sends;
+  click(BUTTON_ID_BACK);
+  assert(!s_alive && fake_sends == sent);
+  configuration(194, 1);
+  assert(s_ribbon_color == 224 && !s_auto_close);
+  finish();
+
+  start();
+  configuration(224, 1);
+  draft();
+  click(BUTTON_ID_SELECT);
+  reply("pending", NULL, 1, 4);
+  assert(!s_alive);
+  finish();
+  start();
+  assert(s_ribbon_color == 224 && s_auto_close);
+  finish();
+
+  // A regular readiness reply repairs a missed configuration delivery.
+  start();
+  TupleValue ready_values[6] = {0};
+  snprintf(ready_values[0].cstring, sizeof(ready_values[0].cstring), "ready");
+  snprintf(ready_values[1].cstring, sizeof(ready_values[1].cstring), "home");
+  ready_values[4].int32 = 194;
+  Tuple ready_tuples[] = {
+    {MESSAGE_KEY_COMMAND, TUPLE_CSTRING, 6, &ready_values[0]},
+    {MESSAGE_KEY_STATUS, TUPLE_CSTRING, 5, &ready_values[1]},
+    {MESSAGE_KEY_TOKEN, TUPLE_INT, 4, &ready_values[2]},
+    {MESSAGE_KEY_REQUEST_ID, TUPLE_INT, 4, &ready_values[3]},
+    {MESSAGE_KEY_RIBBON_COLOR, TUPLE_UINT, 1, &ready_values[4]},
+    {MESSAGE_KEY_AUTO_CLOSE, TUPLE_UINT, 1, &ready_values[5]}
+  };
+  DictionaryIterator ready_iterator = {ready_tuples, 6};
+  receive(&ready_iterator, NULL);
+  assert(!s_busy && s_dictating && s_ribbon_color == 194 && !s_auto_close);
+  assert(s_action_bar->background_color == 194 && fake_settings == 194);
   finish();
   puts("Watch lifecycle, native cancellation, correlated replies, timers and review tests passed.");
   return 0;

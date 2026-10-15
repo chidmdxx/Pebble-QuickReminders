@@ -10,6 +10,7 @@
     "uuid": "14271b76-899a-475b-b4c6-10a2d39bc65d",
     "sdkVersion": "3",
     "enableMultiJS": true,
+    "capabilities": ["configurable"],
     "targetPlatforms": ["gabbro"],
     "watchapp": { "watchface": false },
     "messageKeys": [
@@ -22,7 +23,9 @@
       "CAN_CONFIRM",
       "ERROR",
       "SECONDS_UNTIL",
-      "REQUEST_ID"
+      "REQUEST_ID",
+      "RIBBON_COLOR",
+      "AUTO_CLOSE"
     ],
     "resources": {
       "media": [
