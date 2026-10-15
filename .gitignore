@@ -1,0 +1,8 @@
+app/build/
+app/.lock-waf_*
+app/node_modules/
+node_modules/
+*.pbw
+.env
+.env.*
+!.env.example
