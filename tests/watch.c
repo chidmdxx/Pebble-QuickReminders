@@ -9,7 +9,7 @@ static void response(const char *status, const char *error, int token, int width
   snprintf(values[0].cstring, sizeof(values[0].cstring), "%s", status);
   values[1].int32 = token;
   snprintf(values[2].cstring, sizeof(values[2].cstring), "Synthetic test");
-  snprintf(values[3].cstring, sizeof(values[3].cstring), "2026-10-20\n15:30");
+  snprintf(values[3].cstring, sizeof(values[3].cstring), "2026-10-20 3:30 PM");
   values[4].uint32 = 0xffffff01;
   if (width == 2) values[4].uint16 = 1;
   if (width == 4) values[4].uint32 = 1;
@@ -21,7 +21,7 @@ static void response(const char *status, const char *error, int token, int width
     {MESSAGE_KEY_STATUS, TUPLE_CSTRING, (uint16_t)(strlen(status) + 1), &values[0]},
     {MESSAGE_KEY_TOKEN, TUPLE_INT, 4, &values[1]},
     {MESSAGE_KEY_TITLE, TUPLE_CSTRING, 15, &values[2]},
-    {MESSAGE_KEY_WHEN, TUPLE_CSTRING, 17, &values[3]},
+    {MESSAGE_KEY_WHEN, TUPLE_CSTRING, (uint16_t)(strlen(values[3].cstring) + 1), &values[3]},
     {MESSAGE_KEY_CAN_CONFIRM, TUPLE_UINT, (uint16_t)width, &values[4]},
     {MESSAGE_KEY_ERROR, TUPLE_CSTRING, (uint16_t)(strlen(values[5].cstring) + 1), &values[5]},
     {MESSAGE_KEY_SECONDS_UNTIL, TUPLE_INT, 4, &values[6]},
@@ -96,7 +96,13 @@ static void draft(void) {
   assert(!strcmp(s_review_text->font, FONT_KEY_GOTHIC_24));
   assert(!strcmp(s_review_title->text, s_title));
   assert(s_review_title->screen_flow && s_review_title->flow_hierarchy_ready);
-  assert(s_review_text->layer.bounds.origin.y == fake_title_height + REVIEW_INSET);
+  assert(s_review_title->layer.bounds.size.h == fake_title_height + TITLE_DESCENDER_PAD);
+  assert(s_review_text->layer.bounds.origin.y == fake_title_height + TITLE_DESCENDER_PAD + REVIEW_INSET);
+  assert(2 * s_review_text->layer.bounds.origin.x + s_review_text->layer.bounds.size.w ==
+         s_review_window->root.bounds.size.w);
+  assert(s_review_text->layer.bounds.origin.x + s_review_text->layer.bounds.size.w ==
+         s_scroll->layer.bounds.size.w);
+  assert(strstr(s_review, "2026-10-20 3:30 PM\nIn 20 min"));
   assert(s_scroll->paging && scroll_layer_get_content_size(s_scroll).h %
          s_scroll->layer.bounds.size.h == 0);
 }
@@ -186,12 +192,23 @@ int main(void) {
   draft();
   fake_title_height = 600;
   show_review();
-  assert(!s_reviewed && s_review_text->layer.bounds.origin.y == 600 + REVIEW_INSET);
+  assert(!s_reviewed && s_review_text->layer.bounds.origin.y == 600 + TITLE_DESCENDER_PAD + REVIEW_INSET);
   int title_bottom = scroll_layer_get_content_size(s_scroll).h - s_scroll->layer.bounds.size.h;
   scroll_layer_set_content_offset(s_scroll, GPoint(0, -title_bottom + 1), false);
   assert(!s_reviewed);
   click(BUTTON_ID_DOWN);
   assert(s_reviewed && s_scroll->offset.y == -title_bottom);
+  finish();
+
+  // Date/time and countdown move together rather than splitting at the round rim.
+  start();
+  draft();
+  fake_title_height = 192;
+  show_review();
+  assert(s_review_text->layer.bounds.origin.y == 264 + 264 / 5);
+  assert(!s_reviewed);
+  click(BUTTON_ID_DOWN);
+  assert(s_reviewed);
   finish();
 
   // Native Back is status 1, not the error/rejection variants.

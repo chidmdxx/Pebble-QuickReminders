@@ -3,6 +3,8 @@
 #define TITLE_SIZE 161
 #define WHEN_SIZE 80
 #define REVIEW_INSET 6
+#define TITLE_DESCENDER_PAD 8
+#define DETAILS_LINE_HEIGHT 24
 
 static Window *s_review_window;
 static ScrollLayer *s_scroll;
@@ -289,17 +291,27 @@ static void render_review(void) {
   if (separate_title) {
     text_layer_set_size(s_review_title, GSize(bounds.w, 2400));
     text_layer_enable_screen_text_flow_and_paging(s_review_title, REVIEW_INSET);
-    title_height = text_layer_get_content_size(s_review_title).h;
+    title_height = text_layer_get_content_size(s_review_title).h + TITLE_DESCENDER_PAD;
   }
   text_layer_set_size(s_review_title, GSize(bounds.w, title_height));
   int details_y = separate_title ? title_height + REVIEW_INSET : 0;
-  layer_set_frame(text_layer_get_layer(s_review_text), GRect(0, details_y, bounds.w, 2400));
+  int details_safe_top = bounds.h / 5;
+  // Keep date/time and countdown together, away from the circular page edges.
+  if (separate_title &&
+      details_y % bounds.h + 2 * DETAILS_LINE_HEIGHT > bounds.h - details_safe_top) {
+    details_y = (details_y / bounds.h + 1) * bounds.h + details_safe_top;
+  }
+  // Balance the action-bar gutter so short details share the round face's center.
+  int details_x = separate_title ?
+    layer_get_bounds(window_get_root_layer(s_review_window)).size.w - bounds.w : 0;
+  int details_width = bounds.w - details_x;
+  layer_set_frame(text_layer_get_layer(s_review_text), GRect(details_x, details_y, details_width, 2400));
   text_layer_enable_screen_text_flow_and_paging(s_review_text, REVIEW_INSET);
   text_layer_set_text(s_review_text, s_review);
   GSize size = text_layer_get_content_size(s_review_text);
   // Keep the final circular page aligned instead of clamping its last line to the rim.
   int height = ((details_y + size.h + 4 + bounds.h - 1) / bounds.h) * bounds.h;
-  text_layer_set_size(s_review_text, GSize(bounds.w, height - details_y));
+  text_layer_set_size(s_review_text, GSize(details_width, height - details_y));
   scroll_layer_set_content_size(s_scroll, GSize(bounds.w, height));
   review_scrolled(s_scroll, NULL);
 }

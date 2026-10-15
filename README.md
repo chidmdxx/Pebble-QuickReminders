@@ -14,7 +14,7 @@ Private, timeline-only voice reminders for Pebble Round 2 (`gabbro`) and an Andr
 
 Canceling or failing dictation does not replace a saved record. Genuine speech errors, phone failures and timeouts stay visible in the same scrolling confirmation component. An uncertain phone response requires **Select: reload saved state** before another mutation; **Back** exits that recovery card. A recovered pending insertion shows the delivery caveat and offers explicit **Select: retry same pin** only after it has been read to the bottom. Back from that pending card records again without canceling or deleting the existing pin. The watch's navigation labels remain English; reminder titles retain their original language.
 
-The normal draft uses a bold Gothic24 reminder title above regular Gothic24 date/time and relative-time details, following Recordatorios's visual hierarchy without shrinking the readable details. Both text blocks follow the round screen and share the same paged confirmation; no extra screen is introduced. Its deep-red right-hand action bar shows only a white confirmation checkmark; Up/Down still pages through long text without arrow icons. Icons use a transparent palette so no black box appears over the colored ribbon. Confirmation stays unchanged during a fast phone request; after 800 ms, a delayed request adds waiting feedback inline, not a separate status screen. Recovery and error guidance remain visible when needed. The app drawer uses an original 25-by-25-pixel bell-and-check icon.
+The normal draft uses a bold Gothic24 reminder title above regular Gothic24 date/time and relative-time details, following Recordatorios's visual hierarchy without shrinking the readable details. The title reserves space for descenders such as `p` and `g`. Date and 12-hour time share one line (`2026-10-15 8:59 AM`), with the relative estimate centered below it on the round face rather than offset by the action bar. Midnight displays as `12:00 AM`; noon as `12:00 PM`. Both text blocks follow the round screen and share the same paged confirmation; no extra screen is introduced. Its deep-red right-hand action bar shows only a white confirmation checkmark; Up/Down still pages through long text without arrow icons. Icons use a transparent palette so no black box appears over the colored ribbon. Confirmation stays unchanged during a fast phone request; after 800 ms, a delayed request adds waiting feedback inline, not a separate status screen. Recovery and error guidance remain visible when needed. The app drawer uses an original 25-by-25-pixel bell-and-check icon.
 
 The relative estimate uses remaining seconds sampled from the phone, then elapsed time on the watch. It updates while reviewing: minutes round up, less than a minute displays **In <1 min**, and reached/passed times disable confirmation. Days/hours/minutes use `d`/`h`/`m`. Transport delay or watch-clock adjustments can affect the estimate; the absolute phone-derived instant is unchanged, and the phone revalidates it when confirming.
 
@@ -44,12 +44,28 @@ Examples use synthetic reminder text:
 - `Buy milk tomorrow at 3 PM`
 - `Buy milk on friday at 15:30`
 - `Buy milk 2026-10-20 at 15:30` (replace with a future date)
+- `At 10 am remind me about the practice equipment`
+- `Follow up on the sample deployment at 10 am today`
+- `Recordar llamar a Manuel el lunes que viene`
+- `Llamar a Manuel el próximo lunes`
+- `Llamar a Manuel el 17 de mayo`
+- `Llamar a Manuel hoy a las 3:30 p.m.`
+- `Llamar a Manuel el jueves al mediodía`
+- `Remember to call uncle Robert this Wednesday`
+- `Call uncle Robert next Wednesday`
+- `Call uncle Robert on November 21`
+- `Call uncle Robert on Friday at 3:30 in the afternoon`
+- `Call uncle Robert on Friday at noon`
 
-A leading `remind me to` or `recuérdame` is optional. Scheduling words can mix languages independently: `in/en/dentro de`, minute/hour units, English/Spanish weekdays, `today/hoy`, `tomorrow/mañana`, and `at/a las/a la`. Written relative counts cover 1-99 in English or Spanish; digit counts retain the 1-10080 bound. Title case, accents and language are preserved.
+A leading `remind me to`, `remember to`, `recuérdame` or `recordar` is optional. The dictation typo `reminde me` is also accepted. Scheduling words can mix languages independently: `in/en/dentro de`, minute/hour units, English/Spanish weekdays and months, `today/hoy`, `tomorrow/mañana`, and `at/a las/a la/al`. Written relative counts cover 1-99 in English or Spanish; digit counts retain the 1-10080 bound. Title case, accents and language are preserved.
 
 Relative reminders also accept the time first, followed by the reminder text: `en 5 minutos ver mensajes` or `in 5 minutes to see message`. A leading `remind me` is supported; the optional standalone `to` is grammar, while `to-do` remains part of a title. Both five-minute examples use the original phone reference plus exactly five minutes, not a default time or a later confirmation clock. An empty title, competing schedule or unsupported time modifier still needs clarification.
 
-An absolute day/time clause may precede a topic introduced by `about` or `sobre`. The topic stays in the title: the Spanish example above becomes **Enviar un mensaje sobre la prueba**, scheduled for tomorrow at **08:00**. This is a bounded grammar extension, not arbitrary word-order interpretation.
+An absolute day/time clause may precede a topic introduced by `about` or `sobre`. The topic stays in the title: the Spanish example above becomes **Enviar un mensaje sobre la prueba**, scheduled for tomorrow at **8:00 AM**. This is a bounded grammar extension, not arbitrary word-order interpretation.
+
+Clocks also work without a date, before the title (`At 10 AM remind me about the practice equipment`) or after it (`Review the test at 10 AM`). They use the next occurrence of that local time: today if still ahead, otherwise tomorrow. A date can follow the clock, as in `Review the test at 10 AM today`; an explicit `today` is never rolled to tomorrow. Dotted `a.m.` / `p.m.`, `noon` / `mediodía` and `3:30 in the afternoon` are supported. Spaces around a clock's colon, such as the emulator's synthetic `11: 59 PM` transcript, are accepted without changing punctuation in the title.
+
+`Next Wednesday`, `el próximo lunes` and `el lunes que viene` mean the next occurrence of that weekday strictly after today, not necessarily the following calendar week. `This Wednesday` and bare weekdays still include today. A month/day without a year, such as `on November 21` or `el 17 de mayo`, uses its next occurrence, at 10 AM when no clock is given. On that date, a passed clock rolls the year forward; explicit ISO dates never roll. Invalid calendar dates, DST gaps/overlaps and dates outside the 366-day limit still require another time.
 
 When time is omitted, the defaults are:
 
@@ -59,9 +75,9 @@ When time is omitted, the defaults are:
 
 The selected default appears as an exact date/time and relative estimate and still needs confirmation. It is fixed when the phone receives the request; waiting does not roll it to a later default. A named day's 10 AM that has already passed is rejected, not moved to another day. In `8 de la mañana`, `mañana` means **AM**, not tomorrow. Morning phrases such as `por la mañana` without a clear day/time need clarification rather than being treated as tomorrow.
 
-Times need minutes in 24-hour form, an explicit AM/PM, or a compatible, unambiguous Spanish day period such as `tres de la tarde`. Bare `at 3` / `a las tres` is rejected, not guessed. A weekday includes today; an already-passed time is rejected, not moved to the following week. Relative expressions retain the original phone receipt time through confirmation and retries.
+Times need minutes in 24-hour form, an explicit AM/PM, a supported day period such as `tres de la tarde` or `3:30 in the afternoon`, or noon. Bare `at 3` / `a las tres` is rejected, not guessed. A bare weekday includes today; an already-passed time is rejected, not moved to the following week. Relative expressions retain the original phone receipt time through confirmation and retries.
 
-Ambiguous or competing schedules, unsupported time expressions, recurrence, `next/próximo/siguiente` expressions, invalid dates, past times and dates more than 366 days away are rejected. Compound dates such as `pasado mañana` / `the day after tomorrow` need an explicit date; day-period-only requests such as `tomorrow afternoon` need a specific time. A clock without a day still needs clarification. Redictate using the supported grammar; parse failures display the heard transcript on the watch without logging it. Titles are limited to 160 UTF-8 bytes; long titles are rejected, not silently shortened. DST gaps and repeated local wall times require another time. Changing the phone timezone invalidates an unsubmitted draft; dictate and review it again.
+Ambiguous or competing schedules, unsupported time expressions, recurrence, unsupported relative dates such as `next month` / `la próxima semana` / `el siguiente lunes`, invalid dates, explicit past times and dates more than 366 days away are rejected. Compound dates such as `pasado mañana` / `the day after tomorrow` need an explicit date; day-period-only requests such as `tomorrow afternoon` need a specific time. Redictate using the supported grammar; parse failures display the heard transcript on the watch without logging it. Titles are limited to 160 UTF-8 bytes; long titles are rejected, not silently shortened. DST gaps and repeated local wall times require another time. Changing the phone timezone invalidates an unsubmitted draft; dictate and review it again.
 
 This is deliberately not unrestricted natural-language recognition.
 
@@ -170,3 +186,5 @@ The later two-state UI revision removes the root/manual-date menus and app-owned
 The user subsequently confirmed that the revised flow works on the physical watch. This is flow acceptance, not an additional timed-alert or exhaustive recovery check.
 
 The subsequent time-first/circular-text update was checked with the production parser in the `gabbro` emulator: Spanish leading-time speech produced the expected five-minute draft, and a deliberately wide English title exercised circular paging, early-confirmation protection and the final date/time/delta page. Full-page alignment keeps the footer away from the rim. The reviewed build passed 45 automated tests and was installed via the existing CloudPebble session. No new physical timed-alert result is implied.
+
+The AM/PM and expanded-date revision passed 51 automated tests. Fresh `gabbro` captures using the production parser showed complete title descenders, a single-line date/time including `11:59 PM`, and a centered countdown. A long synthetic title moved the date/time and countdown together to a readable final page. These captures used temporary QuickReminders-only simulator storage; the original simulator files were restored afterward. This revision was installed on the physical watch through the existing signed-in CloudPebble session. Installation succeeded; there is no new physical timed-alert result.

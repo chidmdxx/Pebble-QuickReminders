@@ -175,7 +175,7 @@ test('time-first bilingual reminders confirm exactly one pin and alert at captur
       const draft = f.deliveries[0].payload;
       assert.equal(draft.STATUS, 'draft', text);
       assert.equal(draft.TITLE, title, text);
-      assert.equal(draft.WHEN, '2026-10-14\n12:39', text);
+      assert.equal(draft.WHEN, '2026-10-14 12:39 PM', text);
       assert.equal(draft.SECONDS_UNTIL, 300, text);
       assert.equal(draft.CAN_CONFIRM, 1, text);
       assert.equal(draft.REQUEST_ID, 17, text);
@@ -230,17 +230,33 @@ test('mid-sentence times and defaults require confirmation and display only loca
   try {
     for (const [zone, now, text, title, instant, when] of [
       ['UTC', Date.UTC(2026, 9, 14, 12), 'Enviar un mensaje mañana a las 8 de la mañana sobre la prueba',
-        'Enviar un mensaje sobre la prueba', Date.UTC(2026, 9, 15, 8), '2026-10-15\n08:00'],
+        'Enviar un mensaje sobre la prueba', Date.UTC(2026, 9, 15, 8), '2026-10-15 8:00 AM'],
       ['UTC', Date.UTC(2026, 9, 14, 12), 'Test mañana',
-        'Test', Date.UTC(2026, 9, 15, 10), '2026-10-15\n10:00'],
+        'Test', Date.UTC(2026, 9, 15, 10), '2026-10-15 10:00 AM'],
       ['UTC', Date.UTC(2026, 9, 14, 12), 'Test on Friday',
-        'Test', Date.UTC(2026, 9, 16, 10), '2026-10-16\n10:00'],
+        'Test', Date.UTC(2026, 9, 16, 10), '2026-10-16 10:00 AM'],
       ['UTC', Date.UTC(2026, 9, 14, 12), 'Revisar prueba',
-        'Revisar prueba', Date.UTC(2026, 9, 14, 20), '2026-10-14\n20:00'],
+        'Revisar prueba', Date.UTC(2026, 9, 14, 20), '2026-10-14 8:00 PM'],
       ['UTC', Date.UTC(2026, 9, 14, 20), 'Revisar prueba',
-        'Revisar prueba', Date.UTC(2026, 9, 15, 10), '2026-10-15\n10:00'],
+        'Revisar prueba', Date.UTC(2026, 9, 15, 10), '2026-10-15 10:00 AM'],
       ['America/New_York', Date.UTC(2026, 9, 14, 12), 'Test mañana',
-        'Test', Date.UTC(2026, 9, 15, 14), '2026-10-15\n10:00']
+        'Test', Date.UTC(2026, 9, 15, 14), '2026-10-15 10:00 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'At 10 am reminde me about the practice equipment',
+        'the practice equipment', Date.UTC(2026, 9, 15, 10), '2026-10-15 10:00 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 12), 'At 10 am remind me about the practice equipment',
+        'the practice equipment', Date.UTC(2026, 9, 16, 10), '2026-10-16 10:00 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'Follow up on the sample deployment at 10 am today',
+        'Follow up on the sample deployment', Date.UTC(2026, 9, 15, 10), '2026-10-15 10:00 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'Recordar llamar a Manuel el lunes que viene',
+        'llamar a Manuel', Date.UTC(2026, 9, 19, 10), '2026-10-19 10:00 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'Test el 17 de mayo',
+        'Test', Date.UTC(2027, 4, 17, 10), '2027-05-17 10:00 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'Test hoy a las 3:30 p.m.',
+        'Test', Date.UTC(2026, 9, 15, 15, 30), '2026-10-15 3:30 PM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'Test on Friday at 3:30 in the afternoon',
+        'Test', Date.UTC(2026, 9, 16, 15, 30), '2026-10-16 3:30 PM'],
+      ['UTC', Date.UTC(2026, 9, 15, 6), 'Test el jueves al mediodía',
+        'Test', Date.UTC(2026, 9, 15, 12), '2026-10-15 12:00 PM']
     ]) {
       process.env.TZ = zone;
       const f = phone(undefined, () => now);

@@ -8,8 +8,20 @@ var weekdays = [
   ['wednesday', 'miércoles', 'miercoles'], ['thursday', 'jueves'],
   ['friday', 'viernes'], ['saturday', 'sábado', 'sabado']
 ];
+var weekdayNames = weekdays.map(function(names) { return names.join('|'); }).join('|');
+var weekdayPattern = '(?:(?:next|this|próximo|proximo) )?(?:' + weekdayNames + ')(?: que viene)?';
+var months = [
+  ['january', 'enero'], ['february', 'febrero'], ['march', 'marzo'],
+  ['april', 'abril'], ['may', 'mayo'], ['june', 'junio'],
+  ['july', 'julio'], ['august', 'agosto'], ['september', 'septiembre', 'setiembre'],
+  ['october', 'octubre'], ['november', 'noviembre'], ['december', 'diciembre']
+];
+var monthNames = months.map(function(names) { return names.join('|'); }).join('|');
+var monthDayPattern = '(?:(?:' + monthNames + ') \\d{1,2}|\\d{1,2} de (?:' + monthNames + '))';
 var dayPattern = '(?:today|hoy|tomorrow|mañana|manana|\\d{4}-\\d{2}-\\d{2}|' +
-  weekdays.map(function(names) { return names.join('|'); }).join('|') + ')';
+  weekdayPattern + '|' + monthDayPattern + ')';
+var dayClause = '(?:(?:on|el) )?(' + dayPattern + ')';
+var timeConnector = '(?:at|a las|a la|al)';
 var unitPattern = '(?:minutes?|minutos?|hours?|horas?)';
 var englishSmall = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split(' ');
 var spanishSmall = 'cero uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciséis diecisiete dieciocho diecinueve veinte veintiuno veintidós veintitrés veinticuatro veinticinco veintiséis veintisiete veintiocho veintinueve'.split(' ');
@@ -60,7 +72,9 @@ function relativeInterval(count, unit) {
 }
 
 function clock(value) {
-  var marker = / (am|pm|de la mañana|de la manana|de la tarde|de la noche)$/i.exec(value);
+  value = value.replace(/(\d) *: *(\d)/g, '$1:$2').replace(/([ap])\.m\.?$/i, '$1m');
+  if (/^(?:noon|mediodía|mediodia)$/i.test(value)) return [12, 0];
+  var marker = / (am|pm|in the afternoon|de la mañana|de la manana|de la tarde|de la noche)$/i.exec(value);
   // Keep the original English grammar's optional space before AM/PM.
   if (!marker) marker = /(am|pm)$/i.exec(value);
   var meridiem = marker && marker[1].toLowerCase();
@@ -83,9 +97,9 @@ function clock(value) {
     }
   }
   if (isNaN(hour) || isNaN(minute) || minute < 0 || minute > 59 || hour < 0 || hour > 23) return null;
-  if (meridiem === 'am' || meridiem === 'pm') {
+  if (meridiem === 'am' || meridiem === 'pm' || meridiem === 'in the afternoon') {
     if (hour < 1 || hour > 12) return null;
-    hour = hour % 12 + (meridiem === 'pm' ? 12 : 0);
+    hour = hour % 12 + (meridiem === 'am' ? 0 : 12);
   } else if (meridiem) {
     // Avoid guessing noon/midnight or which side of midnight "night" means.
     if (/mañana|manana/.test(meridiem)) {
@@ -116,16 +130,16 @@ function competingSchedule(value) {
     // An ordinary "in ..." in the title must not hide a later time anchor.
     relative.lastIndex = match.index + 1;
   }
-  var dated = new RegExp(boundary + '(?:(?:on|el) )?' + dayPattern + ' (?:at|a las|a la) (.+)', 'gi');
+  var dated = new RegExp(boundary + '(?:(?:on|el) )?' + dayPattern + ' ' + timeConnector + ' (.+)', 'gi');
   while ((match = dated.exec(value))) {
-    if (countLike(match[1])) return true;
+    if (countLike(match[1]) || clock(match[1])) return true;
     dated.lastIndex = match.index + 1;
   }
   if (!/de la (?:mañana|manana)$/i.test(value) &&
       new RegExp(boundary + '(?:(?:on|el) )?' + dayPattern + '(?: (?:and|or|y|o|to|through|a|hasta))?[,.!?;:)]*$', 'i').test(value)) return true;
   // A second explicit clock is ambiguous even without its own date. Do not
   // mistake ordinary title phrases such as "at one point" for a clock.
-  var times = new RegExp(boundary + '(?:at|a las|a la) (.+)', 'gi');
+  var times = new RegExp(boundary + timeConnector + ' (.+)', 'gi');
   while ((match = times.exec(value))) {
     var words = match[1].split(' ');
     for (var i = 1; i <= words.length; i++) {
@@ -160,14 +174,14 @@ function containsDay(value) {
 function attemptedTime(value) {
   var boundary = '(?:^|[^a-záéíóúüñ0-9])';
   var end = '(?=$|[^a-záéíóúüñ0-9])';
-  if (/\d{1,2}:\d+|\d\s*(?:am|pm)\b/i.test(value)) return true;
-  if (new RegExp(boundary + dayPattern + ' (?:at|a las|a la)(?: |$)', 'i').test(value)) return true;
+  if (/\d{1,2}:\d+|\d\s*(?:[ap]\.?m\.?)\b/i.test(value)) return true;
+  if (new RegExp(boundary + dayPattern + ' ' + timeConnector + '(?: |$)', 'i').test(value)) return true;
   if (/(?:^| )(?:noon|midnight|mediodía|mediodia|medianoche|tonight|morning|afternoon|evening|night|yesterday|ayer|anteayer|anteanoche|(?:por la|en la|esta) (?:mañana|manana|tarde|noche)|de la (?:tarde|noche))(?=$|[ ,.?!])/i.test(value)) return true;
   var relative = new RegExp(boundary + '(?:in|en|dentro de) (.+?) (?:' +
     unitPattern + '|seconds?|segundos?|days?|días?|dias?|weeks?|semanas?|months?|mes(?:es)?|years?|años?)' + end, 'gi');
   if (relative.test(value)) return true;
   var match;
-  var clocks = new RegExp(boundary + '(?:at|a las|a la|in|en|dentro de) (.+)', 'gi');
+  var clocks = new RegExp(boundary + '(?:' + timeConnector + '|in|en|dentro de) (.+)', 'gi');
   while ((match = clocks.exec(value))) {
     if (countLike(match[1])) return true;
     clocks.lastIndex = match.index + 1;
@@ -244,7 +258,12 @@ function two(value) {
 function localDisplay(instant) {
   var date = new Date(instant);
   return date.getFullYear() + '-' + two(date.getMonth() + 1) + '-' + two(date.getDate()) +
-    '\n' + two(date.getHours()) + ':' + two(date.getMinutes());
+    ' ' + (date.getHours() % 12 || 12) + ':' + two(date.getMinutes()) +
+    (date.getHours() < 12 ? ' AM' : ' PM');
+}
+
+function stripPrompt(value) {
+  return value.replace(/^(?:(?:remind|reminde) me(?: to| about)?|remember to|(?:recuérdame|recuerdame|recordarme|recordar)(?: que)?)(?:\s+|$)/i, '');
 }
 
 function draft(what, instant, reference) {
@@ -262,19 +281,23 @@ function draft(what, instant, reference) {
 function parse(text, reference) {
   if (typeof text !== 'string' || !text.trim() || text.length > 512) fail('Dictate a short reminder.');
   if (!validInstant(reference)) fail('Phone clock is invalid.');
-  var input = text.trim().replace(/\s+/g, ' ')
-    .replace(/^(?:remind me(?: to)?|(?:recuérdame|recuerdame|recordarme)(?: que)?)(?:\s+|$)/i, '');
-  if (/\b(every|daily|weekly|monthly|yearly|recurring|next)\b/i.test(input) ||
+  var input = stripPrompt(text.trim().replace(/\s+/g, ' '));
+  var unsupported = input.replace(new RegExp('(?:^|\\b)(?:(?:next|this|próximo|proximo) (?:' +
+    weekdayNames + ')|(?:' + weekdayNames + ') que viene)(?=$|[^a-záéíóúüñ])', 'gi'), '');
+  if (/\b(every|daily|weekly|monthly|yearly|recurring|next)\b/i.test(unsupported) ||
       /\b(?:sundays|mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|weekdays|weekends)\b/i.test(input) ||
       /(?:^|[^a-záéíóúüñ])(?:los|las) (?:domingos|lunes|martes|miércoles|miercoles|jueves|viernes|sábados|sabados)(?=$|[^a-záéíóúüñ])/i.test(input) ||
-      /(?:^|[^a-záéíóúüñ])(?:cada|todos|todas|diariamente|semanalmente|mensualmente|anualmente|recurrentes?|repetir|diari[oa]s?|semanal(?:es)?|mensual(?:es)?|anual(?:es)?|próxim[oa]s?|proxim[oa]s?|siguientes?)(?=$|[^a-záéíóúüñ])/i.test(input)) {
-    fail('Use a single date and time, not a repeating or "next" expression.');
+      /(?:^|[^a-záéíóúüñ])(?:cada|todos|todas|diariamente|semanalmente|mensualmente|anualmente|recurrentes?|repetir|diari[oa]s?|semanal(?:es)?|mensual(?:es)?|anual(?:es)?|próxim[oa]s?|proxim[oa]s?|siguientes?)(?=$|[^a-záéíóúüñ])/i.test(unsupported)) {
+    fail('Use a single supported date and time, not a repeating expression.');
   }
   if (/\b(?:after|before) tomorrow\b|\bpasado (?:mañana|manana)\b/i.test(input)) {
     fail('Use an explicit date for that expression.');
   }
   var relativePattern = new RegExp('^(?:in|en|dentro de) (.+) (' + unitPattern + ')[.!]?$', 'i');
-  var absolutePattern = new RegExp('^(?:(?:on|el) )?(' + dayPattern + ') (?:at|a las|a la) (.+?)(?: ((?:about|sobre) .+))?[.!]?$', 'i');
+  var topic = '(?: ((?:about|sobre) .+))?[.!]?$';
+  var absolutePattern = new RegExp('^' + dayClause + ' ' + timeConnector + ' (.+?)' + topic, 'i');
+  var reversedPattern = new RegExp('^' + timeConnector + ' (.+?) ' + dayClause + topic, 'i');
+  var clockOnlyPattern = new RegExp('^' + timeConnector + ' (.+?)' + topic, 'i');
   var candidates = [];
   var leading = new RegExp('^(?:in|en|dentro de) (.+?) (' + unitPattern + ')(?: (.*))?$', 'i').exec(input);
   if (leading) {
@@ -311,13 +334,36 @@ function parse(text, reference) {
       var time = clock(absolute[2]);
       if (time) candidates.push({ title: what, tail: absolute[3] || '', day: absolute[1].toLowerCase(), time: time });
     }
+    var reversed = reversedPattern.exec(suffix);
+    if (reversed) {
+      time = clock(reversed[1]);
+      if (time) candidates.push({ title: what, tail: reversed[3] || '', day: reversed[2].toLowerCase(), time: time });
+    }
+    var clockOnly = clockOnlyPattern.exec(suffix);
+    if (clockOnly) {
+      time = clock(clockOnly[1]);
+      if (time) candidates.push({ title: what, tail: clockOnly[2] || '', time: time });
+    }
+  }
+  // A leading clock is bounded by the longest complete supported clock phrase.
+  if (!candidates.some(function(candidate) { return !candidate.title; })) {
+    var firstClock = new RegExp('^' + timeConnector + ' (.+)$', 'i').exec(input);
+    if (firstClock) {
+      var words = firstClock[1].split(' ');
+      var leadingClock;
+      for (var end = 1; end < words.length; end++) {
+        time = clock(words.slice(0, end).join(' '));
+        if (time) leadingClock = { title: stripPrompt(words.slice(end).join(' ')), time: time, leading: true };
+      }
+      if (leadingClock) candidates.push(leadingClock);
+    }
   }
   // Explicit schedules win. Defaults apply only after ruling out attempted times,
   // then choosing a named day, or finally an entirely unscheduled title.
   var defaulted = false;
   if (!candidates.length) {
     if (attemptedTime(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
-    var dayOnlyPattern = new RegExp('^(?:(?:on|el) )?(' + dayPattern + ')(?: ((?:about|sobre) .+))?[.!]?$', 'i');
+    var dayOnlyPattern = new RegExp('^' + dayClause + topic, 'i');
     for (index = 0; index < input.length; index++) {
       if (index && input.charAt(index - 1) !== ' ') continue;
       what = input.slice(0, index).trim();
@@ -327,7 +373,7 @@ function parse(text, reference) {
       }
     }
     if (!candidates.length) {
-      var firstDay = new RegExp('^(?:(?:on|el) )?(' + dayPattern + ') (.+)$', 'i').exec(input);
+      var firstDay = new RegExp('^' + dayClause + ' (.+)$', 'i').exec(input);
       if (firstDay) candidates.push({ title: firstDay[2], day: firstDay[1].toLowerCase(), time: [10, 0] });
     }
     if (!candidates.length) {
@@ -341,20 +387,21 @@ function parse(text, reference) {
     }
     defaulted = true;
   }
-  // "el miércoles" / "on Wednesday" are one anchor, not a competing bare-day
-  // interpretation leaving the article in the title.
+  // Prefer the complete date clause over its article/qualifier-free variants
+  // and the clock-only suffix within the same clause.
   candidates = candidates.filter(function(candidate) {
     return !candidates.some(function(other) {
-      return other.title.length < candidate.title.length &&
-        /^(?:on|el)$/i.test(candidate.title.slice(other.title.length).trim());
+      if (other.title.length >= candidate.title.length) return false;
+      var extra = candidate.title.slice(other.title.length).trim();
+      return /^(?:(?:on|el) )?(?:next|this|próximo|proximo)$|^(?:on|el)$/i.test(extra) ||
+        (!candidate.day && other.day && new RegExp('^' + dayClause + '$', 'i').test(extra));
     });
   });
   if (candidates.length !== 1) fail('Use one clear schedule, like "tomorrow at 8 AM".');
   var selected = candidates[0];
   if (selected.leading) {
     if (/^(?:to)?[.!?,;:]*$/i.test(selected.title)) fail('A reminder needs a title.');
-    // A leading interval ends at the unit; modifiers and additional unsupported
-    // schedules must not be reinterpreted as the reminder's title.
+    // A leading schedule must not turn modifiers or a second schedule into a title.
     if (attemptedTime(selected.title) ||
         /^(?:more|later|from now|ago|before|after|and|or|más|mas|antes|después|despues|desde|y|o)(?=$|[ ,.?!])/i.test(selected.title)) {
       fail('Use one clear schedule, like "tomorrow at 8 AM".');
@@ -363,6 +410,8 @@ function parse(text, reference) {
   var tail = selected.tail || '';
   what = selected.title + (tail ? ' ' + tail : '');
   if (competingSchedule(selected.title) || competingSchedule(tail) || competingSchedule(what) ||
+      (!selected.day && !selected.interval &&
+        (attemptedTime(what) || /(?:^| )de la (?:mañana|manana)$/i.test(what))) ||
       (defaulted && (containsDay(selected.title) || containsDay(tail)))) {
     fail('Use one clear schedule, like "tomorrow at 8 AM".');
   }
@@ -370,15 +419,35 @@ function parse(text, reference) {
   var local = new Date(reference);
   var day = selected.day;
   var y = local.getFullYear(), m = local.getMonth() + 1, d = local.getDate();
-  if (/^\d/.test(day)) {
+  var monthDay = day && new RegExp('^(' + monthNames + ') (\\d{1,2})$|^(\\d{1,2}) de (' + monthNames + ')$', 'i').exec(day);
+  if (monthDay) {
+    var monthName = monthDay[1] || monthDay[4];
+    months.forEach(function(names, index) {
+      if (names.indexOf(monthName) >= 0) m = index + 1;
+    });
+    d = Number(monthDay[2] || monthDay[3]);
+    // Validate the calendar date before considering its next annual occurrence.
+    var calendar = new Date(Date.UTC(2000, m - 1, d));
+    if (calendar.getUTCMonth() !== m - 1 || calendar.getUTCDate() !== d) fail('Invalid date. Choose another date.');
+    var beforeToday = m < local.getMonth() + 1 ||
+      (m === local.getMonth() + 1 && d < local.getDate());
+    var passedToday = m === local.getMonth() + 1 && d === local.getDate() &&
+      selected.time[0] * 60 + selected.time[1] <= local.getHours() * 60 + local.getMinutes();
+    if (beforeToday || passedToday) y++;
+  } else if (day && /^\d{4}-/.test(day)) {
     var pieces = day.split('-');
     y = Number(pieces[0]); m = Number(pieces[1]); d = Number(pieces[2]);
-  } else if (day !== 'today' && day !== 'hoy') {
+  } else if (!day || (day !== 'today' && day !== 'hoy')) {
+    var next = day && /^(?:next|próximo|proximo) | que viene$/.test(day);
+    var plainDay = day && day.replace(/^(?:next|this|próximo|proximo) /, '').replace(/ que viene$/, '');
     var weekday = -1;
     weekdays.forEach(function(names, index) {
-      if (names.indexOf(day) >= 0) weekday = index;
+      if (names.indexOf(plainDay) >= 0) weekday = index;
     });
-    var advance = /^(tomorrow|mañana|manana)$/.test(day) ? 1 : (weekday - local.getDay() + 7) % 7;
+    var advance;
+    if (!day) advance = selected.time[0] * 60 + selected.time[1] <= local.getHours() * 60 + local.getMinutes() ? 1 : 0;
+    else advance = /^(tomorrow|mañana|manana)$/.test(day) ? 1 : (weekday - local.getDay() + 7) % 7;
+    if (next && !advance) advance = 7;
     var target = new Date(y, m - 1, d + advance, 12);
     y = target.getFullYear(); m = target.getMonth() + 1; d = target.getDate();
   }
