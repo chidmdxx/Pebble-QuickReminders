@@ -16,3 +16,15 @@ test('the app drawer uses one bundled 25-pixel PNG menu icon', () => {
   assert.equal(image.readUInt32BE(16), 25);
   assert.equal(image.readUInt32BE(20), 25);
 });
+
+test('store icons are opaque PNGs at the required small and large dimensions', () => {
+  for (const size of [80, 144]) {
+    const image = fs.readFileSync(path.join(__dirname, '../store', `icon-${size}.png`));
+    assert.equal(image.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(image.toString('ascii', 12, 16), 'IHDR');
+    assert.equal(image.readUInt32BE(16), size);
+    assert.equal(image.readUInt32BE(20), size);
+    assert.equal(image[24], 8);
+    assert.equal(image[25], 2);
+  }
+});

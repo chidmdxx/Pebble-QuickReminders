@@ -171,6 +171,8 @@ Storage or insertion failures are shown explicitly. If the app reports corrupt l
 
 The user-reported creation, one-alert and disconnected-delivery check above passed, along with one mixed-language phrase. The native-action-bar revision also passed the user-reported automatic-exit, one-pin and one-alert check with the app closed. Recognition across models, restarts and the other physical-device edge cases below have not all been exercised. Emulator transcripts and automated contracts do not substitute for those checks.
 
+For version 0.2.0, the user confirmed that the configurable AM/PM times, auto-close and ribbon colors work on the real watch. Confirmation and Timeline screenshots were also captured with synthetic reminder text. This does not establish the remaining restart, recovery or speech-model checks.
+
 On an authorized phone and Round 2, use synthetic reminders to check:
 
 - Launch opens dictation immediately once, including with a saved pending insertion. A transcript received before phone readiness is retained and sent once. Recording Back exits even if readiness arrives late; no pin replays automatically.
@@ -186,6 +188,12 @@ On an authorized phone and Round 2, use synthetic reminders to check:
 - DST, timezone travel and near-future/expired requests require review rather than silently changing the time.
 
 Optional Copilot-through-Actions parsing is **not implemented**. It remains gated on the local device checks and a real PKJS authenticated-encrypted dispatch/artifact transport proof. No Actions runtime workflow or credentials are needed for this build. Future cloud interpretation needs explicit text-sharing consent, supported Copilot authentication, strict draft validation and the same local confirmation boundary. It must not silently fall back to Gemini.
+
+## Store artwork
+
+`store\icon-80.png` and `store\icon-144.png` reuse the original bell-and-check menu icon on white backgrounds at the store's small and large icon sizes. They use integer nearest-neighbor scaling with centered padding to keep the pixel artwork sharp. The watch's 25-by-25 menu icon is unchanged.
+
+The optional store banner is 720 by 320 pixels. Round 2 screenshots must be 260 by 260 pixels, without a watch frame. Store submission and publication are separate from building or installing a PBW.
 
 ## Sources and license
 
