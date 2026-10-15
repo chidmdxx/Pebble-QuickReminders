@@ -480,7 +480,7 @@ static void receive(DictionaryIterator *iterator, void *context) {
     Tuple *error = dict_find(iterator, MESSAGE_KEY_ERROR);
     bool has_error = error && error->type == TUPLE_CSTRING && error->length > 1;
     s_show_transcript = has_error && strcmp(s_last_command, "parse") == 0;
-    snprintf(s_notice, sizeof(s_notice), "%s",
+    snprintf(s_notice, sizeof(s_notice), "%.*s", (int)sizeof(s_notice) - 1,
              error && error->type == TUPLE_CSTRING ? error->value->cstring : "Phone request failed.");
     s_reviewed = false;
     s_reload_required = true;
@@ -521,14 +521,14 @@ static void receive(DictionaryIterator *iterator, void *context) {
   s_seconds_until = seconds_value;
   s_delta_received_at = time(NULL);
   if (!seconds_value) s_can_confirm = false;
-  snprintf(s_title, sizeof(s_title), "%s", title ? title->value->cstring : "");
-  snprintf(s_when, sizeof(s_when), "%s", when ? when->value->cstring : "");
+  snprintf(s_title, sizeof(s_title), "%.*s", (int)sizeof(s_title) - 1, title ? title->value->cstring : "");
+  snprintf(s_when, sizeof(s_when), "%.*s", (int)sizeof(s_when) - 1, when ? when->value->cstring : "");
   s_reviewed = false;
   if (ready && s_capture_failed) { refresh(); return; }
   Tuple *error = dict_find(iterator, MESSAGE_KEY_ERROR);
   bool has_error = error && error->type == TUPLE_CSTRING && error->length > 1;
   s_show_transcript = has_error && strcmp(s_last_command, "parse") == 0;
-  snprintf(s_notice, sizeof(s_notice), "%s",
+  snprintf(s_notice, sizeof(s_notice), "%.*s", (int)sizeof(s_notice) - 1,
            error && error->type == TUPLE_CSTRING ? error->value->cstring :
            "");
   if (insertion_reply && s_pending && !has_error) {

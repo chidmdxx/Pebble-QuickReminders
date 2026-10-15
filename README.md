@@ -71,7 +71,7 @@ For comparison, public [Recordatorios](https://apps.rebble.io/en_US/application/
 
 ## Build and sideload
 
-Use Node.js 22 or later and a native C compiler (`cc`, or the executable path in `CC`) for the tests; no npm dependencies are required. The C harness executes the actual watch control/tuple-decoding code against a small SDK stub. It does not validate font metrics, pixels or hardware behavior. On Windows, run the tests and SDK builds in WSL following the [official setup guide](https://developer.repebble.com/sdk/). Cloud authentication and installation can use the native Windows CLI as described below. This project was built with Pebble CLI 5.0.40 and SDK 4.33.1.
+Use Node.js 22 or later and a native C compiler (`cc`, or the executable path in `CC`) for the tests; no npm dependencies are required. Prefer GCC or Clang for strict host checks: lightweight compilers can miss warnings enforced by CI. The C harness executes the actual watch control/tuple-decoding code against a small SDK stub. It does not validate font metrics, pixels or hardware behavior. On Windows, run the tests and SDK builds in WSL following the [official setup guide](https://developer.repebble.com/sdk/). Cloud authentication and installation can use the native Windows CLI as described below. This project was built with Pebble CLI 5.0.40 and SDK 4.33.1.
 
 From the repository root, in a shell with those tools on PATH:
 

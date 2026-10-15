@@ -18,12 +18,9 @@
 #define MESSAGE_KEY_SECONDS_UNTIL 10008
 #define MESSAGE_KEY_REQUEST_ID 10009
 #define ACTION_BAR_WIDTH 34
-#define FONT_KEY_GOTHIC_18 "18"
 #define FONT_KEY_GOTHIC_24 "24"
 #define FONT_KEY_GOTHIC_24_BOLD "24-bold"
-#define FONT_KEY_ROBOTO_CONDENSED_21 "21"
 #define GTextAlignmentCenter 0
-#define MenuRowAlignCenter 0
 #define BUTTON_ID_SELECT 2
 #define BUTTON_ID_BACK 0
 #define BUTTON_ID_UP 1
@@ -31,7 +28,7 @@
 #define SECOND_UNIT 1
 #define APP_LOG_LEVEL_INFO 0
 #define APP_LOG_LEVEL_WARNING 1
-#define APP_LOG(...) ((void)0)
+#define APP_LOG(...) fake_app_log(__VA_ARGS__)
 
 typedef struct { int16_t x, y; } GPoint;
 typedef struct { int16_t w, h; } GSize;
@@ -59,9 +56,6 @@ typedef struct {
   uint8_t background_color;
 } ActionBarLayer;
 typedef int TimeUnits;
-typedef struct { uint16_t section, row; } MenuIndex;
-#define MenuIndex(s, r) ((MenuIndex){s, r})
-typedef struct { Layer layer; } MenuLayer;
 typedef struct {
   Layer layer;
   const char *text;
@@ -75,13 +69,6 @@ typedef struct {
   void (*click_config_provider)(void *);
 } ScrollLayerCallbacks;
 struct ScrollLayer { Layer layer; GPoint offset; GSize size; ScrollLayerCallbacks callbacks; bool paging; };
-typedef struct {
-  uint16_t (*get_num_rows)(MenuLayer *, uint16_t, void *);
-  int16_t (*get_cell_height)(MenuLayer *, MenuIndex *, void *);
-  void (*draw_row)(void *, const Layer *, MenuIndex *, void *);
-  void (*select_click)(MenuLayer *, MenuIndex *, void *);
-} MenuLayerCallbacks;
-typedef void GContext;
 typedef void *ClickRecognizerRef;
 typedef struct { bool confirmation, error_dialogs; } DictationSession;
 typedef int DictationSessionStatus;
@@ -124,6 +111,7 @@ static int fake_timer_count;
 static int fake_outbox_result, fake_begin_result;
 static int fake_dictation_stops;
 
+static void fake_app_log(int level, const char *format, ...) { (void)level; (void)format; }
 static GRect layer_get_bounds(Layer *p) { return p->bounds; }
 static void layer_set_frame(Layer *p, GRect frame) { p->bounds = frame; }
 static void layer_add_child(Layer *p, Layer *c) { c->parent = p; }
@@ -148,14 +136,6 @@ static void window_destroy(Window *w) {
   if (w->loaded && w->handlers.unload) w->handlers.unload(w);
   free(w);
 }
-static MenuLayer *menu_layer_create(GRect b) { MenuLayer *m = calloc(1, sizeof(*m)); m->layer.bounds = b; return m; }
-static Layer *menu_layer_get_layer(MenuLayer *m) { return &m->layer; }
-static void menu_layer_destroy(MenuLayer *m) { free(m); }
-static void menu_layer_reload_data(MenuLayer *m) { (void)m; }
-static void menu_layer_set_callbacks(MenuLayer *m, void *c, MenuLayerCallbacks v) { (void)m; (void)c; (void)v; }
-static void menu_layer_set_click_config_onto_window(MenuLayer *m, Window *w) { (void)m; (void)w; }
-static void menu_layer_set_selected_index(MenuLayer *m, MenuIndex i, int a, bool b) { (void)m; (void)i; (void)a; (void)b; }
-static void menu_cell_basic_draw(GContext *c, const Layer *l, const char *t, const char *s, void *i) { (void)c; (void)l; (void)t; (void)s; (void)i; }
 static ScrollLayer *scroll_layer_create(GRect b) { ScrollLayer *s = calloc(1, sizeof(*s)); s->layer.bounds = b; return s; }
 static void scroll_layer_destroy(ScrollLayer *s) { free(s); }
 static Layer *scroll_layer_get_layer(ScrollLayer *s) { return &s->layer; }
