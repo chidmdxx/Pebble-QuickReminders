@@ -56,9 +56,9 @@ addNumber('veintiuna', 21);
 // Deliberately bounded vocabulary, not general natural-language interpretation:
 // written counts 1..99 (one language per count), or digits, with mixed-language
 // connectors/units. Relative digits retain the 1..10080 interval bound.
-// Clock words use hour [y minute], hour 1..23 / minute 0..59, and require
-// AM/PM (hour 1..12) or a Spanish day period: mañana 1..11, tarde 1..7/13..19,
-// noche 8..11/20..23. Numeric H:MM retains the explicit 24-hour alternative.
+// Clock words use hour [y minute], hour 0..23 / minute 0..59.
+// Unmarked hours 1..12 consider both AM and PM. Explicit periods retain their
+// bounds: AM/PM 1..12, mañana 1..11, tarde 1..7/13..19, noche 8..11/20..23.
 function number(value) {
   value = value.toLowerCase();
   if (/^\d+$/.test(value)) return Number(value);
@@ -84,9 +84,7 @@ function clock(value) {
   if (numeric) {
     hour = Number(numeric[1]);
     minute = numeric[2] === undefined ? 0 : Number(numeric[2]);
-    if (!meridiem && numeric[2] === undefined) return null;
   } else {
-    if (!meridiem) return null;
     hour = number(body);
     if (isNaN(hour)) {
       // "treinta y cinco" remains a single minute count, not another hour.
@@ -97,6 +95,7 @@ function clock(value) {
     }
   }
   if (isNaN(hour) || isNaN(minute) || minute < 0 || minute > 59 || hour < 0 || hour > 23) return null;
+  var inferMeridiem = !meridiem && hour >= 1 && hour <= 12;
   if (meridiem === 'am' || meridiem === 'pm' || meridiem === 'in the afternoon') {
     if (hour < 1 || hour > 12) return null;
     hour = hour % 12 + (meridiem === 'am' ? 0 : 12);
@@ -112,7 +111,8 @@ function clock(value) {
       else if (hour < 20 || hour > 23) return null;
     }
   }
-  return [hour, minute];
+  if (inferMeridiem) hour %= 12;
+  return [hour, minute, inferMeridiem];
 }
 
 function countLike(value) {
@@ -143,11 +143,12 @@ function competingSchedule(value) {
   while ((match = times.exec(value))) {
     var words = match[1].split(' ');
     for (var i = 1; i <= words.length; i++) {
-      if (clock(words.slice(0, i).join(' ').replace(/[,.!?;:)]*$/, ''))) return true;
+      var clockValue = words.slice(0, i).join(' ').replace(/[,.!?;:)]*$/, '');
+      if (clock(clockValue) && (i === words.length || attemptedTime(clockValue))) return true;
     }
     if (/^\d{1,2}(?= |:|$)/.test(match[1])) return true;
-    // A complete bare written clock still needs clarification, not a guessed
-    // meridiem. Require the whole remaining phrase so "at one point" is a title.
+    // A second bare written clock conflicts too; require the complete phrase
+    // so ordinary titles such as "at one point" remain intact.
     var bare = match[1].toLowerCase().replace(/[,.!?;:)]*$/, '')
       .replace(/ (?:and|or|y|o)$/, '').split(' y ');
     var hour = number(bare[0]);
@@ -353,7 +354,11 @@ function parse(text, reference) {
       var leadingClock;
       for (var end = 1; end < words.length; end++) {
         time = clock(words.slice(0, end).join(' '));
-        if (time) leadingClock = { title: stripPrompt(words.slice(end).join(' ')), time: time, leading: true };
+        if (time) leadingClock = {
+          title: stripPrompt(words.slice(end).join(' ')).replace(/^to(?: |$)/i, ''),
+          time: time,
+          leading: true
+        };
       }
       if (leadingClock) candidates.push(leadingClock);
     }
@@ -419,6 +424,8 @@ function parse(text, reference) {
   var local = new Date(reference);
   var day = selected.day;
   var y = local.getFullYear(), m = local.getMonth() + 1, d = local.getDate();
+  var lastClockMinute = selected.time[0] * 60 + selected.time[1] + (selected.time[2] ? 12 * 60 : 0);
+  var currentMinute = local.getHours() * 60 + local.getMinutes();
   var monthDay = day && new RegExp('^(' + monthNames + ') (\\d{1,2})$|^(\\d{1,2}) de (' + monthNames + ')$', 'i').exec(day);
   if (monthDay) {
     var monthName = monthDay[1] || monthDay[4];
@@ -432,7 +439,7 @@ function parse(text, reference) {
     var beforeToday = m < local.getMonth() + 1 ||
       (m === local.getMonth() + 1 && d < local.getDate());
     var passedToday = m === local.getMonth() + 1 && d === local.getDate() &&
-      selected.time[0] * 60 + selected.time[1] <= local.getHours() * 60 + local.getMinutes();
+      lastClockMinute <= currentMinute;
     if (beforeToday || passedToday) y++;
   } else if (day && /^\d{4}-/.test(day)) {
     var pieces = day.split('-');
@@ -445,13 +452,17 @@ function parse(text, reference) {
       if (names.indexOf(plainDay) >= 0) weekday = index;
     });
     var advance;
-    if (!day) advance = selected.time[0] * 60 + selected.time[1] <= local.getHours() * 60 + local.getMinutes() ? 1 : 0;
+    if (!day) advance = lastClockMinute <= currentMinute ? 1 : 0;
     else advance = /^(tomorrow|mañana|manana)$/.test(day) ? 1 : (weekday - local.getDay() + 7) % 7;
     if (next && !advance) advance = 7;
     var target = new Date(y, m - 1, d + advance, 12);
     y = target.getFullYear(); m = target.getMonth() + 1; d = target.getDate();
   }
-  return draft(what, resolveWall([y, m, d, selected.time[0], selected.time[1]]), reference);
+  var instant = resolveWall([y, m, d, selected.time[0], selected.time[1]]);
+  if (selected.time[2] && instant <= reference) {
+    instant = resolveWall([y, m, d, selected.time[0] + 12, selected.time[1]]);
+  }
+  return draft(what, instant, reference);
 }
 
 function validate(value, now, mode) {

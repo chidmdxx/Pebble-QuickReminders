@@ -256,7 +256,15 @@ test('mid-sentence times and defaults require confirmation and display only loca
       ['UTC', Date.UTC(2026, 9, 15, 6), 'Test on Friday at 3:30 in the afternoon',
         'Test', Date.UTC(2026, 9, 16, 15, 30), '2026-10-16 3:30 PM'],
       ['UTC', Date.UTC(2026, 9, 15, 6), 'Test el jueves al mediodía',
-        'Test', Date.UTC(2026, 9, 15, 12), '2026-10-15 12:00 PM']
+        'Test', Date.UTC(2026, 9, 15, 12), '2026-10-15 12:00 PM'],
+      ['UTC', Date.UTC(2026, 9, 15, 11, 37), 'remind me at 8:30 to check out the game',
+        'check out the game', Date.UTC(2026, 9, 15, 20, 30), '2026-10-15 8:30 PM'],
+      ['UTC', Date.UTC(2026, 9, 15, 21), 'remind me at 8:30 to check out the game',
+        'check out the game', Date.UTC(2026, 9, 16, 8, 30), '2026-10-16 8:30 AM'],
+      ['UTC', Date.UTC(2026, 9, 15, 11, 37), 'Recuérdame revisar el juego a las ocho',
+        'revisar el juego', Date.UTC(2026, 9, 15, 20), '2026-10-15 8:00 PM'],
+      ['UTC', Date.UTC(2026, 9, 15, 11, 37), 'Test tomorrow at 8:30',
+        'Test', Date.UTC(2026, 9, 16, 8, 30), '2026-10-16 8:30 AM']
     ]) {
       process.env.TZ = zone;
       const f = phone(undefined, () => now);

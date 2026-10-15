@@ -56,6 +56,8 @@ Examples use synthetic reminder text:
 - `Call uncle Robert on November 21`
 - `Call uncle Robert on Friday at 3:30 in the afternoon`
 - `Call uncle Robert on Friday at noon`
+- `Remind me at 8:30 to check out the game` (the next 8:30 AM or PM)
+- `Recuérdame revisar el juego a las ocho` (the next 8 AM or PM)
 
 A leading `remind me to`, `remember to`, `recuérdame` or `recordar` is optional. The dictation typo `reminde me` is also accepted. Scheduling words can mix languages independently: `in/en/dentro de`, minute/hour units, English/Spanish weekdays and months, `today/hoy`, `tomorrow/mañana`, and `at/a las/a la/al`. Written relative counts cover 1-99 in English or Spanish; digit counts retain the 1-10080 bound. Title case, accents and language are preserved.
 
@@ -65,17 +67,19 @@ An absolute day/time clause may precede a topic introduced by `about` or `sobre`
 
 Clocks also work without a date, before the title (`At 10 AM remind me about the practice equipment`) or after it (`Review the test at 10 AM`). They use the next occurrence of that local time: today if still ahead, otherwise tomorrow. A date can follow the clock, as in `Review the test at 10 AM today`; an explicit `today` is never rolled to tomorrow. Dotted `a.m.` / `p.m.`, `noon` / `mediodía` and `3:30 in the afternoon` are supported. Spaces around a clock's colon, such as the emulator's synthetic `11: 59 PM` transcript, are accepted without changing punctuation in the title.
 
+Without AM/PM or a day period, hours 1-12 use the next future AM or PM occurrence. At 11:37 AM, `at 8:30` means **8:30 PM today**; at or after 8:30 PM, it means **8:30 AM tomorrow**. This also applies to whole hours and supported clock words, such as `at eight` / `a las ocho`. If a date is stated, choose the earliest future AM/PM occurrence on that date: `today at 8:30` can mean 8:30 PM, while `tomorrow at 8:30` starts with 8:30 AM. An explicit date is not advanced if both occurrences have passed. Unmarked `12` considers midnight before noon. Hours 0 and 13-23 keep their unambiguous 24-hour meaning; explicit AM/PM and day periods are never changed. A standalone `to` after a leading clock is removed from the title; `to-do` is preserved.
+
 `Next Wednesday`, `el próximo lunes` and `el lunes que viene` mean the next occurrence of that weekday strictly after today, not necessarily the following calendar week. `This Wednesday` and bare weekdays still include today. A month/day without a year, such as `on November 21` or `el 17 de mayo`, uses its next occurrence, at 10 AM when no clock is given. On that date, a passed clock rolls the year forward; explicit ISO dates never roll. Invalid calendar dates, DST gaps/overlaps and dates outside the 366-day limit still require another time.
 
 When time is omitted, the defaults are:
 
 - **Named day:** 10 AM on that day. `Tomorrow` and standalone `mañana` mean the next day; `today/hoy`, weekdays and ISO dates use their specified day.
 - **No day or time:** 8 PM today if the phone's local time is before 8 PM; at or after 8 PM, 10 AM tomorrow.
-- **Explicit time:** keep it unchanged. An invalid, ambiguous or incomplete time is rejected rather than replaced by a default.
+- **Clock supplied:** resolve it using its explicit period, unambiguous 24-hour value, or the next-AM/PM rule above. Invalid or unsupported times are rejected rather than replaced by a default.
 
 The selected default appears as an exact date/time and relative estimate and still needs confirmation. It is fixed when the phone receives the request; waiting does not roll it to a later default. A named day's 10 AM that has already passed is rejected, not moved to another day. In `8 de la mañana`, `mañana` means **AM**, not tomorrow. Morning phrases such as `por la mañana` without a clear day/time need clarification rather than being treated as tomorrow.
 
-Times need minutes in 24-hour form, an explicit AM/PM, a supported day period such as `tres de la tarde` or `3:30 in the afternoon`, or noon. Bare `at 3` / `a las tres` is rejected, not guessed. A bare weekday includes today; an already-passed time is rejected, not moved to the following week. Relative expressions retain the original phone receipt time through confirmation and retries.
+Times accept numeric hours with optional minutes, supported clock words, explicit AM/PM, a day period such as `tres de la tarde` or `3:30 in the afternoon`, or noon. A bare weekday includes today; if neither AM nor PM remains in the future on that day, the request is rejected rather than moved to the following week. Relative expressions retain the original phone receipt time through confirmation and retries.
 
 Ambiguous or competing schedules, unsupported time expressions, recurrence, unsupported relative dates such as `next month` / `la próxima semana` / `el siguiente lunes`, invalid dates, explicit past times and dates more than 366 days away are rejected. Compound dates such as `pasado mañana` / `the day after tomorrow` need an explicit date; day-period-only requests such as `tomorrow afternoon` need a specific time. Redictate using the supported grammar; parse failures display the heard transcript on the watch without logging it. Titles are limited to 160 UTF-8 bytes; long titles are rejected, not silently shortened. DST gaps and repeated local wall times require another time. Changing the phone timezone invalidates an unsubmitted draft; dictate and review it again.
 
@@ -188,3 +192,5 @@ The user subsequently confirmed that the revised flow works on the physical watc
 The subsequent time-first/circular-text update was checked with the production parser in the `gabbro` emulator: Spanish leading-time speech produced the expected five-minute draft, and a deliberately wide English title exercised circular paging, early-confirmation protection and the final date/time/delta page. Full-page alignment keeps the footer away from the rim. The reviewed build passed 45 automated tests and was installed via the existing CloudPebble session. No new physical timed-alert result is implied.
 
 The AM/PM and expanded-date revision passed 51 automated tests. Fresh `gabbro` captures using the production parser showed complete title descenders, a single-line date/time including `11:59 PM`, and a centered countdown. A long synthetic title moved the date/time and countdown together to a readable final page. These captures used temporary QuickReminders-only simulator storage; the original simulator files were restored afterward. This revision was installed on the physical watch through the existing signed-in CloudPebble session. Installation succeeded; there is no new physical timed-alert result.
+
+The subsequent next-AM/PM parser update passed 44 targeted parser/phone tests and was installed on the physical watch through the same cached CloudPebble session. It covers unmarked whole hours, hour/minute clocks, named dates, midnight/noon boundaries and the original confirmation/insertion contract. Installation succeeded; this update has no new physical timed-alert result.
