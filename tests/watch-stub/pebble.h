@@ -19,7 +19,16 @@
 #define MESSAGE_KEY_REQUEST_ID 10009
 #define MESSAGE_KEY_RIBBON_COLOR 10010
 #define MESSAGE_KEY_AUTO_CLOSE 10011
-#define ACTION_BAR_WIDTH 34
+#ifdef PBL_COLOR
+#define PBL_IF_COLOR_ELSE(color, bw) (color)
+#else
+#define PBL_IF_COLOR_ELSE(color, bw) (bw)
+#endif
+#ifdef PBL_ROUND
+#define PBL_IF_ROUND_ELSE(round, rect) (round)
+#else
+#define PBL_IF_ROUND_ELSE(round, rect) (rect)
+#endif
 #define FONT_KEY_GOTHIC_24 "24"
 #define FONT_KEY_GOTHIC_24_BOLD "24-bold"
 #define GTextAlignmentCenter 0
@@ -48,6 +57,7 @@ typedef struct { uint8_t data[32]; GColor *palette; bool palette_owned; } GBitma
 #define GBitmapFormat1BitPalette 1
 #define GColorClear 0x00
 #define GColorWhite 0xff
+#define GColorBlack 0xc0
 #define GColorDarkCandyAppleRed 0xe0
 #define GColorFromRGB(r, g, b) ((GColor)(0xc0 | (((r) >> 6) << 4) | (((g) >> 6) << 2) | ((b) >> 6)))
 #define ActionBarLayerIconPressAnimationNone 0
@@ -123,7 +133,9 @@ static GRect layer_get_bounds(Layer *p) { return p->bounds; }
 static void layer_set_frame(Layer *p, GRect frame) { p->bounds = frame; }
 static void layer_add_child(Layer *p, Layer *c) { c->parent = p; }
 static Window *window_create(void) {
-  Window *w = calloc(1, sizeof(*w)); w->root.bounds = GRect(0, 0, 264, 264); return w;
+  Window *w = calloc(1, sizeof(*w));
+  w->root.bounds = GRect(0, 0, PBL_DISPLAY_WIDTH, PBL_DISPLAY_HEIGHT);
+  return w;
 }
 static Layer *window_get_root_layer(Window *w) { return &w->root; }
 static Window *window_stack_get_top_window(void) { return fake_depth ? fake_stack[fake_depth - 1] : NULL; }

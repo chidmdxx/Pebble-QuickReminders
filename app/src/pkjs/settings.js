@@ -59,6 +59,7 @@ function page(value, failed) {
     '<input id="pm" type="time" min="12:00" max="23:59" step="60" required value="' + value.pmTime + '">' +
     '<small>Used today when no day or time is spoken, if this time is still ahead.</small>' +
     '<label for="ribbon">Ribbon color</label><select id="ribbon">' + options + '</select>' +
+    '<small>Color watches only. Monochrome watches always use a black ribbon with white icons.</small>' +
     '<div id="preview">Reminder ribbon preview</div>' +
     '<label for="close"><input id="close" type="checkbox"' + (value.autoClose ? ' checked' : '') +
     '> Auto-close after saving</label>' +
