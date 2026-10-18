@@ -57,6 +57,42 @@ test('leading relative clauses preserve original-language titles and the capture
   assert.throws(() => parser.parse('in 5 minutes to \ud800', reference), /invalid text/);
 }));
 
+test('explicit title introductions preserve AM and PM subjects after leading schedules', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const title of ['AM radio', 'PM review', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
+    for (const [prefix, instant] of [
+      ['in five minutes to ', reference + 5 * 60000],
+      ['At 8 PM remind me about ', Date.UTC(2026, 9, 17, 20)],
+      ['At 8 PM remind me to ', Date.UTC(2026, 9, 17, 20)],
+      ['At 8 PM to ', Date.UTC(2026, 9, 17, 20)],
+      ['Tomorrow at 8 PM, remind me to ', Date.UTC(2026, 9, 18, 20)],
+      ['Mañana a las 8 de la noche, recuérdame ', Date.UTC(2026, 9, 18, 20)],
+      ['Tomorrow remind me about ', Date.UTC(2026, 9, 18, 10)],
+      ['Monday remind me to ', Date.UTC(2026, 9, 19, 10)],
+      ['Tomorrow morning remind me to ', Date.UTC(2026, 9, 18, 10)],
+      ['Tomorrow afternoon remind me to ', Date.UTC(2026, 9, 18, 20)],
+      ['Tomorrow evening remind me about ', Date.UTC(2026, 9, 18, 20)],
+      ['Tomorrow at night, remind me to ', Date.UTC(2026, 9, 18, 20)],
+      ['2026-10-20 at 8 PM, remind me to ', Date.UTC(2026, 9, 20, 20)]
+    ]) {
+      const phrase = prefix + title;
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.reference, reference, phrase);
+      assert.equal(actual.instant, instant, phrase);
+      parser.validate(actual, reference + 60000);
+    }
+  }
+  for (const phrase of [
+    'At 13 PM remind me about AM radio',
+    'Tomorrow at 8 PM AM, remind me to PM review',
+    'Tomorrow at 8 PM p.m., remind me to AM radio',
+    'Tomorrow at 8 30, remind me to PM review',
+    'Tomorrow at 8 : 60 PM, remind me to AM radio',
+    'Tomorrow at 8 PM UTC, remind me to PM review'
+  ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+}));
+
 test('leading relative clauses reject missing titles, modifiers and additional or invalid schedules', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 14, 12);
   for (const phrase of [

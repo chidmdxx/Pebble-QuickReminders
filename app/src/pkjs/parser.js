@@ -471,7 +471,7 @@ function parse(text, reference, settings) {
   if (selected.leading) {
     if (/^(?:to)?[.!?,;:]*$/i.test(selected.title)) fail('A reminder needs a title.');
     // A leading schedule must not turn modifiers or a second schedule into a title.
-    if (attemptedTime(selected.title) || /^[ap]\.?m\.?(?=$|[ ,.?!])/i.test(selected.title) ||
+    if (attemptedTime(selected.title) ||
         /^(?:more|later|from now|ago|before|after|and|or|más|mas|antes|después|despues|desde|y|o)(?=$|[ ,.?!])/i.test(selected.title)) {
       fail('Use one clear schedule, like "tomorrow at 8 AM".');
     }

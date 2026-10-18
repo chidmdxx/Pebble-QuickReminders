@@ -142,6 +142,69 @@ test('English, Spanish and mixed transcripts remain drafts until explicit confir
   }
 });
 
+test('introduced AM and PM titles survive phone draft reload and confirm exactly one pin and alert', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const reference = Date.UTC(2026, 9, 17, 12);
+    for (const title of ['AM radio', 'PM review', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
+      for (const [prefix, instant] of [
+        ['in five minutes to ', reference + 5 * 60000],
+        ['At 8 PM remind me about ', Date.UTC(2026, 9, 17, 20)],
+        ['At 8 PM remind me to ', Date.UTC(2026, 9, 17, 20)],
+        ['At 8 PM to ', Date.UTC(2026, 9, 17, 20)],
+        ['Tomorrow at 8 PM, remind me to ', Date.UTC(2026, 9, 18, 20)],
+        ['Mañana a las 8 de la noche, recuérdame ', Date.UTC(2026, 9, 18, 20)],
+        ['Tomorrow remind me about ', Date.UTC(2026, 9, 18, 10)],
+        ['Monday remind me to ', Date.UTC(2026, 9, 19, 10)],
+        ['Tomorrow morning remind me to ', Date.UTC(2026, 9, 18, 10)],
+        ['Tomorrow afternoon remind me to ', Date.UTC(2026, 9, 18, 20)],
+        ['Tomorrow evening remind me about ', Date.UTC(2026, 9, 18, 20)],
+        ['Tomorrow at night, remind me to ', Date.UTC(2026, 9, 18, 20)],
+        ['2026-10-20 at 8 PM, remind me to ', Date.UTC(2026, 9, 20, 20)]
+      ]) {
+        const text = prefix + title;
+        let now = reference;
+        const f = phone(undefined, () => now);
+        f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 25, TEXT: text } });
+        const draft = f.deliveries[0].payload;
+        assert.equal(draft.STATUS, 'draft', text);
+        assert.equal(draft.TITLE, title, text);
+        assert.equal(draft.SECONDS_UNTIL, (instant - reference) / 1000, text);
+        assert.equal(draft.CAN_CONFIRM, 1, text);
+        assert.equal(draft.REQUEST_ID, 25, text);
+        assert.equal(f.pins.length, 0, text);
+        f.deliveries[0].success();
+        now += 60000;
+        f.listeners.ready();
+        const restored = f.deliveries[1].payload;
+        assert.equal(restored.STATUS, 'draft', text);
+        assert.equal(restored.TITLE, title, text);
+        assert.equal(restored.TOKEN, draft.TOKEN, text);
+        assert.equal(restored.WHEN, draft.WHEN, text);
+        assert.equal(restored.SECONDS_UNTIL, (instant - now) / 1000, text);
+        assert.equal(f.pins.length, 0, text);
+        f.deliveries[1].success();
+        f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+        assert.equal(f.deliveries[2].payload.STATUS, 'pending', text);
+        assert.equal(f.pins.length, 1, text);
+        assert.equal(f.pins[0].layout.title, title, text);
+        assert.equal(f.pins[0].time, new Date(instant).toISOString(), text);
+        assert.equal(f.pins[0].reminders.length, 1, text);
+        assert.equal(f.pins[0].reminders[0].time, f.pins[0].time, text);
+        assert.deepEqual(f.logs, [], text);
+        f.deliveries[2].success();
+        f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+        assert.equal(f.pins.length, 1, text);
+        assert.equal(f.pins[0].reminders.length, 1, text);
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('relative time uses the current phone clock, rounds fractions up and expires at zero', () => {
   let now = Date.UTC(2026, 9, 14, 12);
   const f = phone(undefined, () => now);
@@ -307,6 +370,12 @@ test('invalid leading schedules never expose confirmation or insert a pin', () =
     'remind me in five minutes later to see message',
     'remind me in five minutes to see message tomorrow at 3 PM',
     'recuerdame en cinco minutos ver mensajes en dos días',
+    'At 13 PM remind me about AM radio',
+    'Tomorrow at 8 PM AM, remind me to PM review',
+    'Tomorrow at 8 PM p.m., remind me to AM radio',
+    'Tomorrow at 8 30, remind me to PM review',
+    'Tomorrow at 8 : 60 PM, remind me to AM radio',
+    'Tomorrow at 8 PM UTC, remind me to PM review',
     'Tomorrow at 8 : 60, remind me to buy bread',
     'Mañana a las 8 : 60, recuérdame comprar pan',
     'Tomorrow at 8 PM: remind me to buy bread',
