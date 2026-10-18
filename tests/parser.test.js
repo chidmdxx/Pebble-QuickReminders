@@ -510,6 +510,42 @@ test('trailing named-day periods use local calendar dates and reject ambiguous d
   });
 });
 
+test('leading standalone periods choose the next configured wall time without a named day', () => zone('UTC', () => {
+  for (const [reference, day] of [
+    [Date.UTC(2026, 9, 14, 6), 14],
+    [Date.UTC(2026, 9, 14, 10), 15],
+    [Date.UTC(2026, 9, 14, 22), 15]
+  ]) {
+    for (const text of [
+      'en la mañana hablar sobre la prueba',
+      'Por la manana, hablar sobre la prueba',
+      'In the morning remind me to hablar sobre la prueba'
+    ]) {
+      const actual = parser.parse(text, reference);
+      assert.equal(actual.title, 'hablar sobre la prueba', text);
+      assert.equal(actual.instant, Date.UTC(2026, 9, day, 10), text);
+      assert.equal(actual.reference, reference, text);
+    }
+  }
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const [text, instant] of [
+    ['En la mañana hablar sobre la prueba', Date.UTC(2026, 9, 15, 9, 15)],
+    ['Por la tarde hablar sobre la prueba', Date.UTC(2026, 9, 14, 18, 45)],
+    ['In the evening remind me to hablar sobre la prueba', Date.UTC(2026, 9, 14, 18, 45)]
+  ]) {
+    const actual = parser.parse(text, reference, custom);
+    assert.equal(actual.title, 'hablar sobre la prueba', text);
+    assert.equal(actual.instant, instant, text);
+    assert.equal(actual.reference, reference, text);
+  }
+  for (const text of [
+    'En la mañana', 'En la mañana recuérdame', 'En la mañana a las ocho Test',
+    'En la mañana Test tomorrow', 'En la mañana Test en cinco minutos',
+    'En la mañana UTC Test', 'En la madrugada Test', 'Esta mañana Test'
+  ]) assert.throws(() => parser.parse(text, reference), undefined, text);
+}));
+
 test('no day or time defaults to 8 PM today before the cutoff, otherwise 10 AM tomorrow', () => zone('UTC', () => {
   for (const [reference, expected] of [
     [Date.UTC(2026, 9, 14, 0), Date.UTC(2026, 9, 14, 20)],

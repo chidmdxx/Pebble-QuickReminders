@@ -12,10 +12,14 @@ Open the app to start dictation. Try:
 - `Recuérdame comprar leche mañana a las 3 PM`
 - `Tomorrow at 8 PM, remind me to buy bread`
 - `Call Sam dentro de cinco minutos`
+- `Revisar la prueba mañana en la mañana`
+- `En la mañana revisar la prueba`
 
 Review the parsed date and time before confirming. Scroll to the bottom of long reminders to enable Select. Back from a draft discards it and starts dictation again; Back while recording exits.
 
 When you name a day without a time, the default is 10 AM. With no day or time, the default is 8 PM today, or 10 AM tomorrow if 8 PM has passed. A clock without AM/PM, such as `at 8:30`, uses the next future AM or PM occurrence. Change the AM/PM defaults, ribbon color, and auto-close behavior in the companion's **Quick Reminders > Settings**.
+
+Day periods use those defaults too: `mañana en la mañana` / `tomorrow morning` use AM, and `mañana por la noche` / `tomorrow evening` use PM. A leading period without a day, such as `En la mañana revisar la prueba`, uses the next future occurrence of that default time (today or tomorrow).
 
 The parser supports a bounded set of phrases, not unrestricted natural language. Recurring reminders, competing schedules, invalid dates, and ambiguous daylight-saving times require another phrase. Titles are limited to 160 UTF-8 bytes.
 
@@ -37,6 +41,8 @@ pebble install --emulator gabbro
 The package is `app/build/app.pbw`. For a physical watch, enable the companion's Developer Connection and use `pebble install --phone PHONE_IP` on the same network, or `pebble install --cloudpebble` after signing in. See the [Developer Connection guide](https://developer.repebble.com/guides/tools-and-resources/developer-connection.md).
 
 Run `pebble clean` before rebuilding after changing AppMessage keys in `app/package.json`. GitHub Actions runs the tests, builds all six supported SDK targets, and uploads the versioned PBW as `quickreminders-all-watches`.
+
+**[Download CI builds](https://github.com/chidmdxx/Pebble-QuickReminders/actions/workflows/tests.yml?query=branch%3Amain+is%3Asuccess):** open the latest successful `main` run, then download **quickreminders-all-watches** under **Artifacts** and unzip the PBW. GitHub sign-in is required; artifacts expire after 30 days. Use `main` builds rather than unreviewed pull-request artifacts.
 
 ## Project structure
 
