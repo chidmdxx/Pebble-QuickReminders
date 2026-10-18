@@ -788,6 +788,61 @@ test('leading defaulted days reject missing titles, past defaults and competing 
     Date.UTC(2027, 0, 1, 10));
 }));
 
+test('leading day defaults reject unparsed time connectors at the raw schedule boundary', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const [day, period, connector, time, prompt] of [
+    ['Tomorrow', 'morning', 'at', 'sunset', 'remind me to buy bread'],
+    ['Tomorrow', 'evening', 'at', 'sunrise', 'remind me to buy bread'],
+    ['Mañana', 'por la mañana', 'a las', 'amanecer', 'recuérdame comprar pan'],
+    ['Mañana', 'en la tarde', 'a la', 'puesta del sol', 'recuérdame comprar pan'],
+    ['Mañana', 'en la noche', 'al', 'amanecer', 'recuérdame comprar pan']
+  ]) {
+    for (const modifier of ['', ' ' + period]) {
+      for (const separator of [' ', ', ']) {
+        const phrase = `${day}${modifier} ${connector} ${time}${separator}${prompt}`;
+        assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+      }
+    }
+  }
+  for (const [phrase, title, hour] of [
+    ['Tomorrow remind me to at sunset, buy bread', 'at sunset, buy bread', 10],
+    ['Mañana por la mañana recuérdame al amanecer, comprar pan', 'al amanecer, comprar pan', 10],
+    ['Tomorrow afternoon remind me to review 30 items', 'review 30 items', 20],
+    ['Mañana en la tarde recuérdame 30 artículos', '30 artículos', 20]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, 18, hour), phrase);
+  }
+}));
+
+test('leading clocks reject numeric and written continuations without truncating the schedule', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const schedule of ['Tomorrow at eight', 'Tomorrow at 8', 'Mañana a las ocho', 'Mañana a la 8', 'Mañana al ocho', 'At eight']) {
+    for (const fragment of [
+      '30', '0', '60', '999', '-5', '+30', '1.5', '1,5',
+      'thirty p.m.', 'thirty', 'sixty', 'ninety-nine', 'one hundred',
+      'treinta de la noche', 'treinta y cinco', 'sesenta', 'cien', 'media', 'quarter'
+    ]) {
+      const phrase = `${schedule} ${fragment}, remind me to buy bread`;
+      assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+    }
+  }
+  for (const [phrase, title, hour, minute = 0] of [
+    ['Tomorrow at 8 : 30 PM, remind me to review 30 items', 'review 30 items', 20, 30],
+    ['Tomorrow at 8 PM, remind me to 30 items to review', '30 items to review', 20],
+    ['Tomorrow at eight remind me to thirty items to review', 'thirty items to review', 8],
+    ['Tomorrow at 8 PM to 30 items to review', '30 items to review', 20],
+    ['Mañana a las ocho y treinta de la noche, recuérdame treinta artículos', 'treinta artículos', 20, 30],
+    ['Tomorrow at 8 PM, remind me to :30, review!', ':30, review!', 20],
+    ['Tomorrow planning at 8 PM', 'Tomorrow planning', 20]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, phrase.startsWith('Tomorrow planning') ? 17 : 18, hour, minute), phrase);
+  }
+}));
+
 test('leading defaulted morning periods retain DST gap and overlap rejection', () => zone('America/New_York', () => {
   const settings = { amTime: '02:30', pmTime: '18:45', ribbonColor: 224, autoClose: true };
   for (const phrase of [

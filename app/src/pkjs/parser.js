@@ -278,6 +278,18 @@ function timezoneQualifier(value) {
     abbreviations + '|[+−-] *\\d{1,2}(?::?\\d{2})?|' + iana + ')(?=$|[^a-záéíóúüñ0-9_])', 'i').test(value);
 }
 
+function invalidScheduleBoundary(value, afterClock) {
+  // Inspect the raw boundary, before a prompt or "to" introduces title text.
+  if (timezoneQualifier(value) ||
+      new RegExp('^' + timeConnector + '(?=$|[^a-záéíóúüñ0-9])', 'i').test(value)) return true;
+  if (!afterClock) return false;
+  if (/^:|^(?:[ap]\.?m\.?|de la (?:mañana|manana|tarde|noche)|in the (?:afternoon|evening)|at night)(?=$|[^a-záéíóúüñ0-9])/i.test(value)) return true;
+  var first = value.toLowerCase().split(/[ ,.!?;:]/)[0];
+  // Unsupported minute fragments must not turn a shorter hour into a schedule.
+  return /^[-+\d]/.test(first) || !isNaN(number(first)) ||
+    /^(?:half|quarter|minus|negative|hundred|thousand|medio|media|cuarto|menos|cien|ciento|mil)$/.test(first);
+}
+
 function draft(what, instant, reference) {
   if (!validInstant(reference) || !validInstant(instant)) fail('Phone clock is invalid.');
   if (instant <= reference) fail('That time has passed. Choose a future time.');
@@ -395,8 +407,7 @@ function parse(text, reference, settings) {
     if (leadingSchedule) {
       // Check before stripping the prompt so punctuation inside a title stays intact.
       // Malformed clock continuations must not fall back to a shorter valid hour.
-      if (timezoneQualifier(leadingTitle) ||
-          /^:|^(?:[ap]\.?m\.?|de la (?:mañana|manana|tarde|noche)|in the (?:afternoon|evening)|at night)(?=$|[^a-záéíóúüñ0-9])/i.test(leadingTitle)) {
+      if (invalidScheduleBoundary(leadingTitle, true)) {
         fail('Use one clear schedule, like "tomorrow at 8 AM".');
       }
       candidates.push(leadingSchedule);
@@ -409,7 +420,7 @@ function parse(text, reference, settings) {
     if (firstDay) {
       var remainder = firstDay[2];
       if (dayPeriod) remainder = remainder.slice(dayPeriod[0].length);
-      if (timezoneQualifier(remainder)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
+      if (invalidScheduleBoundary(remainder, false)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
       candidates.push({
         title: stripPrompt(remainder).replace(/^to(?: |$)/i, ''),
         day: firstDay[1].toLowerCase(),

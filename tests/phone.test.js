@@ -165,20 +165,25 @@ test('leading English and Spanish absolute reminders keep one reviewed instant a
   process.env.TZ = 'UTC';
   try {
     const reference = Date.UTC(2026, 9, 17, 12);
-    for (const [text, title] of [
+    for (const [text, title, minute = 0] of [
       ['mañana a las 8 de la noche, recuerdame comprar pan', 'comprar pan'],
       ['Tomorrow at 8 PM, remind me to buy bread', 'buy bread'],
       ['Tomorrow at 8 at night, remind me to buy bread', 'buy bread'],
-      ['Tomorrow at 8 in the evening, remind me to buy bread', 'buy bread']
+      ['Tomorrow at 8 in the evening, remind me to buy bread', 'buy bread'],
+      ['Tomorrow at 8 PM, remind me to review 30 items', 'review 30 items'],
+      ['Tomorrow at 8 PM, remind me to 30 items to review', '30 items to review'],
+      ['Tomorrow at 8 : 30 PM, remind me to 30 items to review', '30 items to review', 30],
+      ['Mañana a las ocho y treinta de la noche, recuérdame treinta artículos', 'treinta artículos', 30]
     ]) {
       let now = reference;
+      const instant = Date.UTC(2026, 9, 18, 20, minute);
       const f = phone(undefined, () => now);
       f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 17, TEXT: text } });
       const draft = f.deliveries[0].payload;
       assert.equal(draft.STATUS, 'draft');
       assert.equal(draft.TITLE, title);
-      assert.equal(draft.WHEN, '2026-10-18 8:00 PM');
-      assert.equal(draft.SECONDS_UNTIL, 32 * 3600);
+      assert.equal(draft.WHEN, `2026-10-18 8:${minute ? '30' : '00'} PM`);
+      assert.equal(draft.SECONDS_UNTIL, (instant - reference) / 1000);
       assert.equal(draft.CAN_CONFIRM, 1);
       assert.equal(draft.REQUEST_ID, 17);
       assert.equal(f.pins.length, 0);
@@ -188,7 +193,7 @@ test('leading English and Spanish absolute reminders keep one reviewed instant a
       const restored = f.deliveries[1].payload;
       assert.equal(restored.TOKEN, draft.TOKEN);
       assert.equal(restored.WHEN, draft.WHEN);
-      assert.equal(restored.SECONDS_UNTIL, 32 * 3600 - 60);
+      assert.equal(restored.SECONDS_UNTIL, (instant - reference) / 1000 - 60);
       assert.equal(f.pins.length, 0);
       f.deliveries[1].success();
       f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN, REQUEST_ID: 18 } });
@@ -196,7 +201,7 @@ test('leading English and Spanish absolute reminders keep one reviewed instant a
       assert.equal(f.deliveries[2].payload.REQUEST_ID, 18);
       assert.equal(f.pins.length, 1);
       assert.equal(f.pins[0].layout.title, title);
-      assert.equal(f.pins[0].time, '2026-10-18T20:00:00.000Z');
+      assert.equal(f.pins[0].time, new Date(instant).toISOString());
       assert.equal(f.pins[0].reminders.length, 1);
       assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
       f.deliveries[2].success();
@@ -318,6 +323,44 @@ test('invalid leading schedules never expose confirmation or insert a pin', () =
     assert.equal(response.REQUEST_ID, 19, text);
     assert.equal(f.pins.length, 0, text);
     assert.deepEqual(f.logs, ['QuickReminders: request failed.']);
+  }
+});
+
+test('unparsed leading time boundaries cannot expose confirmation or create pins', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    for (const text of [
+      'Tomorrow at sunset, remind me to buy bread',
+      'Mañana al amanecer, recuérdame comprar pan',
+      'Mañana a las amanecer, recuérdame comprar pan',
+      'Mañana a la puesta del sol, recuérdame comprar pan',
+      'Tomorrow evening at sunset, remind me to buy bread',
+      'Mañana por la mañana al amanecer, recuérdame comprar pan',
+      'Tomorrow at eight thirty p.m., remind me to buy bread',
+      'Tomorrow at 8 30, remind me to buy bread',
+      'Tomorrow at eight sixty, remind me to buy bread',
+      'Tomorrow at 8 -5, remind me to buy bread',
+      'Mañana a las ocho treinta de la noche, recuérdame comprar pan',
+      'Mañana a la 8 60, recuérdame comprar pan',
+      'Mañana al ocho cien, recuérdame comprar pan'
+    ]) {
+      const f = phone(undefined, () => Date.UTC(2026, 9, 17, 12));
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 24, TEXT: text } });
+      const response = f.deliveries[0].payload;
+      assert.equal(response.STATUS, 'home', text);
+      assert.match(response.ERROR, /clear schedule/, text);
+      assert.notEqual(response.CAN_CONFIRM, 1, text);
+      assert.equal(response.REQUEST_ID, 24, text);
+      assert.equal(f.pins.length, 0, text);
+      f.deliveries[0].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: response.TOKEN || 1 } });
+      assert.notEqual(f.deliveries[1].payload.CAN_CONFIRM, 1, text);
+      assert.equal(f.pins.length, 0, text);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
   }
 });
 
