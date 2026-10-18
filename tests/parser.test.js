@@ -59,7 +59,7 @@ test('leading relative clauses preserve original-language titles and the capture
 
 test('explicit title introductions preserve AM and PM subjects after leading schedules', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 17, 12);
-  for (const title of ['AM radio', 'PM review', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
+  for (const title of ['AM radio', 'PM review', 'PM: notes', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
     for (const [prefix, instant] of [
       ['in five minutes to ', reference + 5 * 60000],
       ['At 8 PM remind me about ', Date.UTC(2026, 9, 17, 20)],
@@ -854,7 +854,7 @@ test('leading day defaults reject unparsed time connectors at the raw schedule b
 
 test('leading clocks reject numeric and written continuations without truncating the schedule', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 17, 12);
-  for (const schedule of ['Tomorrow at eight', 'Tomorrow at 8', 'Mañana a las ocho', 'Mañana a la 8', 'Mañana al ocho', 'At eight']) {
+  for (const schedule of ['Tomorrow at eight', 'Tomorrow at 8', 'Mañana a las ocho', 'Mañana a la 8', 'Mañana al ocho', 'At eight', 'Tomorrow at 20', 'Mañana a las veinte']) {
     for (const fragment of [
       '30', '0', '60', '999', '-5', '+30', '1.5', '1,5',
       'thirty p.m.', 'thirty', 'sixty', 'ninety-nine', 'one hundred',
@@ -877,6 +877,50 @@ test('leading clocks reject numeric and written continuations without truncating
     assert.equal(actual.title, title, phrase);
     assert.equal(actual.instant, Date.UTC(2026, 9, phrase.startsWith('Tomorrow planning') ? 17 : 18, hour, minute), phrase);
   }
+}));
+
+test('raw spaced or incomplete AM/PM qualifiers cannot truncate a leading clock', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const schedule of ['Tomorrow at 8', 'Mañana a las ocho', 'At 8']) {
+    for (const qualifier of ['p. m.', 'p m', 'p .m.', 'p . m', 'a. m.', 'a m', 'a .m.', 'p.', 'a.', 'p', 'a', 'a ', 'p ']) {
+      for (const prompt of ['remind me to buy bread', 'recuérdame comprar pan']) {
+        const phrase = `${schedule} ${qualifier}, ${prompt}`;
+        assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+      }
+    }
+  }
+  for (const [phrase, title] of [
+    ['Tomorrow at 8p.m., remind me to ¡Café, a. m.!', '¡Café, a. m.!'],
+    ['Mañana a las ocho p.m., recuérdame Revisar p. m., ÁNA!', 'Revisar p. m., ÁNA!']
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, 18, 20), phrase);
+  }
+}));
+
+test('complete leading clocks preserve connector-led and numbered titles', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const [schedule, day, hour, minute = 0] of [
+    ['At 8 PM', 17, 20], ['Tomorrow at 8 PM', 18, 20],
+    ['Mañana a las 8 de la noche', 18, 20],
+    ['Tomorrow at 20:30', 18, 20, 30], ['Mañana a las 8:30', 18, 8, 30],
+    ['At 8 PM tomorrow', 18, 20],
+    ['Mañana a las ocho y treinta', 18, 8, 30],
+    ['Tomorrow at eight', 18, 8]
+  ]) {
+    for (const title of [
+      'at home exercise', 'a las puertas de ÁNA, ¡Café!', 'a la oficina', 'al mercado', 'a home exercise'
+    ].concat(schedule.endsWith('eight') ? [] : ['30 items to review', 'treinta artículos, ¡ÁNA!', '30 minutes to review'])) {
+      const phrase = `${schedule} ${title}`;
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.instant, Date.UTC(2026, 9, day, hour, minute), phrase);
+    }
+  }
+  for (const phrase of [
+    'At 8 PM at 9 PM buy bread', 'Tomorrow at 20:30 a las 21 comprar pan'
+  ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
 }));
 
 test('leading defaulted morning periods retain DST gap and overlap rejection', () => zone('America/New_York', () => {

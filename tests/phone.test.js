@@ -147,7 +147,7 @@ test('introduced AM and PM titles survive phone draft reload and confirm exactly
   process.env.TZ = 'UTC';
   try {
     const reference = Date.UTC(2026, 9, 17, 12);
-    for (const title of ['AM radio', 'PM review', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
+    for (const title of ['AM radio', 'PM review', 'PM: notes', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
       for (const [prefix, instant] of [
         ['in five minutes to ', reference + 5 * 60000],
         ['At 8 PM remind me about ', Date.UTC(2026, 9, 17, 20)],
@@ -228,9 +228,19 @@ test('leading English and Spanish absolute reminders keep one reviewed instant a
   process.env.TZ = 'UTC';
   try {
     const reference = Date.UTC(2026, 9, 17, 12);
-    for (const [text, title, minute = 0] of [
+    for (const [text, title, minute = 0, day = 18, hour = 20] of [
       ['mañana a las 8 de la noche, recuerdame comprar pan', 'comprar pan'],
       ['Tomorrow at 8 PM, remind me to buy bread', 'buy bread'],
+      ['Tomorrow at 8p.m., remind me to ¡Café, a. m.!', '¡Café, a. m.!'],
+      ['Mañana a las ocho p.m., recuérdame Revisar p. m., ÁNA!', 'Revisar p. m., ÁNA!'],
+      ['Tomorrow at 8 PM at home exercise', 'at home exercise'],
+      ['At 8 PM at home exercise', 'at home exercise', 0, 17],
+      ['At 8 PM 30 items to review', '30 items to review', 0, 17],
+      ['Mañana a las 8 de la noche al mercado, ¡ÁNA!', 'al mercado, ¡ÁNA!'],
+      ['Tomorrow at 8 PM 30 items to review', '30 items to review'],
+      ['Mañana a las 20:30 treinta artículos, ¡Café!', 'treinta artículos, ¡Café!', 30],
+      ['Tomorrow at 20:30 30 items to review', '30 items to review', 30],
+      ['Mañana a las 8:30 30 artículos, ¡ÁNA!', '30 artículos, ¡ÁNA!', 30, 18, 8],
       ['Tomorrow at 8 at night, remind me to buy bread', 'buy bread'],
       ['Tomorrow at 8 in the evening, remind me to buy bread', 'buy bread'],
       ['Tomorrow at 8 PM, remind me to review 30 items', 'review 30 items'],
@@ -239,13 +249,13 @@ test('leading English and Spanish absolute reminders keep one reviewed instant a
       ['Mañana a las ocho y treinta de la noche, recuérdame treinta artículos', 'treinta artículos', 30]
     ]) {
       let now = reference;
-      const instant = Date.UTC(2026, 9, 18, 20, minute);
+      const instant = Date.UTC(2026, 9, day, hour, minute);
       const f = phone(undefined, () => now);
       f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 17, TEXT: text } });
       const draft = f.deliveries[0].payload;
       assert.equal(draft.STATUS, 'draft');
       assert.equal(draft.TITLE, title);
-      assert.equal(draft.WHEN, `2026-10-18 8:${minute ? '30' : '00'} PM`);
+      assert.equal(draft.WHEN, `2026-10-${day} ${hour % 12 || 12}:${minute ? '30' : '00'} ${hour < 12 ? 'AM' : 'PM'}`);
       assert.equal(draft.SECONDS_UNTIL, (instant - reference) / 1000);
       assert.equal(draft.CAN_CONFIRM, 1);
       assert.equal(draft.REQUEST_ID, 17);
@@ -407,7 +417,15 @@ test('unparsed leading time boundaries cannot expose confirmation or create pins
       'Tomorrow evening at sunset, remind me to buy bread',
       'Mañana por la mañana al amanecer, recuérdame comprar pan',
       'Tomorrow at eight thirty p.m., remind me to buy bread',
+      ...['Tomorrow at 8', 'Mañana a las ocho', 'At 8'].flatMap(schedule =>
+        ['p. m.', 'p m', 'p .m.', 'p . m', 'a. m.', 'a m', 'a .m.', 'p.', 'a.', 'p', 'a', 'a ', 'p '].flatMap(qualifier =>
+          ['remind me to buy bread', 'recuérdame comprar pan'].map(prompt =>
+            `${schedule} ${qualifier}, ${prompt}`))),
+      'At 8 PM at 9 PM buy bread',
+      'Tomorrow at 20:30 a las 21 comprar pan',
       'Tomorrow at 8 30, remind me to buy bread',
+      'Tomorrow at 20 30, remind me to buy bread',
+      'Mañana a las veinte treinta, recuérdame comprar pan',
       'Tomorrow at eight sixty, remind me to buy bread',
       'Tomorrow at 8 -5, remind me to buy bread',
       'Mañana a las ocho treinta de la noche, recuérdame comprar pan',

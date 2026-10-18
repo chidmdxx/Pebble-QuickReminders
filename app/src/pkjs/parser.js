@@ -278,12 +278,14 @@ function timezoneQualifier(value) {
     abbreviations + '|[+−-] *\\d{1,2}(?::?\\d{2})?|' + iana + ')(?=$|[^a-záéíóúüñ0-9_])', 'i').test(value);
 }
 
-function invalidScheduleBoundary(value, afterClock) {
+function invalidScheduleBoundary(value, afterClock, completeClock) {
   // Inspect the raw boundary, before a prompt or "to" introduces title text.
-  if (timezoneQualifier(value) ||
-      new RegExp('^' + timeConnector + '(?=$|[^a-záéíóúüñ0-9])', 'i').test(value)) return true;
-  if (!afterClock) return false;
-  if (/^:|^(?:[ap]\.?m\.?|de la (?:mañana|manana|tarde|noche)|in the (?:afternoon|evening)|at night)(?=$|[^a-záéíóúüñ0-9])/i.test(value)) return true;
+  if (timezoneQualifier(value)) return true;
+  if (!afterClock) return new RegExp('^' + timeConnector + '(?=$|[^a-záéíóúüñ0-9])', 'i').test(value);
+  if (/^:|^[ap](?= *(?:$|[,;:!?]))|^(?:[ap](?: *\.? *m\.?| *\.)|p|de la (?:mañana|manana|tarde|noche)|in the (?:afternoon|evening)|at night)(?=$|[^a-záéíóúüñ0-9])/i.test(value)) return true;
+  // A complete clock can introduce a numbered title without a prompt. Only
+  // bare hours still need protection against unsupported minute continuations.
+  if (completeClock) return false;
   var first = value.toLowerCase().split(/[ ,.!?;:]/)[0];
   // Unsupported minute fragments must not turn a shorter hour into a schedule.
   return /^[-+\d]/.test(first) || !isNaN(number(first)) ||
@@ -377,6 +379,7 @@ function parse(text, reference, settings) {
   // Keep the longest complete leading schedule; a comma may separate its title.
   if (!candidates.some(function(candidate) { return !candidate.title; })) {
     var leadingSchedule;
+    var completeClock;
     for (var end = 1; end <= input.length; end++) {
       if (end < input.length && input.charAt(end - 1) !== ' ' && input.charAt(end - 1) !== ',') continue;
       var prefix = input.slice(0, end).trim().replace(/,$/, '').trim();
@@ -384,18 +387,25 @@ function parse(text, reference, settings) {
       reversed = reversedPattern.exec(prefix);
       clockOnly = clockOnlyPattern.exec(prefix);
       time = null;
+      var clockText;
       var leadingDay = null;
       if (absolute && !absolute[3]) {
-        time = clock(absolute[2]);
+        clockText = absolute[2];
+        time = clock(clockText);
         if (time) leadingDay = absolute[1].toLowerCase();
       }
       if (!time && reversed && !reversed[3]) {
-        time = clock(reversed[1]);
+        clockText = reversed[1];
+        time = clock(clockText);
         if (time) leadingDay = reversed[2].toLowerCase();
       }
-      if (!time && clockOnly && !clockOnly[2]) time = clock(clockOnly[1]);
+      if (!time && clockOnly && !clockOnly[2]) {
+        clockText = clockOnly[1];
+        time = clock(clockText);
+      }
       if (time) {
         var leadingTitle = input.slice(end).trim();
+        completeClock = /:| y /i.test(clockText) || (!time[2] && isNaN(number(clockText)));
         leadingSchedule = {
           title: stripPrompt(leadingTitle).replace(/^to(?: |$)/i, ''),
           day: leadingDay,
@@ -407,7 +417,7 @@ function parse(text, reference, settings) {
     if (leadingSchedule) {
       // Check before stripping the prompt so punctuation inside a title stays intact.
       // Malformed clock continuations must not fall back to a shorter valid hour.
-      if (invalidScheduleBoundary(leadingTitle, true)) {
+      if (invalidScheduleBoundary(leadingTitle, true, completeClock)) {
         fail('Use one clear schedule, like "tomorrow at 8 AM".');
       }
       candidates.push(leadingSchedule);
