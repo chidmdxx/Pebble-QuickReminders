@@ -621,6 +621,61 @@ test('leading clocks reject incomplete continuations instead of falling back to 
   ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
 }));
 
+test('leading schedules reject timezone qualifiers before stripping title prompts', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const name of ['UTC', 'America/New_York']) zone(name, () => {
+    for (const qualifier of [
+      'UTC', 'utc', 'GMT', 'UTC+02:00', 'UTC - 4', 'GMT+0530', 'GMT-07',
+      'EST', 'EDT', 'CST', 'CDT', 'MST', 'MDT', 'PST', 'PDT', 'PT', 'ET',
+      'BST', 'CET', 'CEST', 'EET', 'IST', 'JST', 'AEST', 'NZDT',
+      '+02:00', '-0400', '+5', '−04:00', 'Z', '(UTC)', '[GMT+2]',
+      'in UTC', 'en CET', 'America/New_York', 'Europe/Paris',
+      'Asia/Kolkata', 'America/Argentina/Buenos_Aires', 'Etc/GMT+5'
+    ]) {
+      const phrase = `Tomorrow at 8 PM ${qualifier}, remind me to buy bread`;
+      assert.throws(() => parser.parse(phrase, reference), /clear schedule/, `${name}: ${phrase}`);
+    }
+    for (const phrase of [
+      'Mañana a las 8 de la noche UTC, recuérdame comprar pan',
+      'Tomorrow at 8 PM, UTC, remind me to buy bread',
+      'At 8 PM tomorrow GMT+2, remind me to buy bread',
+      'At 8 PM PST, remind me to buy bread',
+      'Tomorrow at 8 PMUTC, remind me to buy bread',
+      'Tomorrow at 8 PM+0200, remind me to buy bread',
+      'Tomorrow at 20:00Z, remind me to buy bread',
+      'Tomorrow UTC, remind me to buy bread',
+      'Tomorrow evening Europe/Paris, remind me to buy bread'
+    ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, `${name}: ${phrase}`);
+  });
+});
+
+test('timezone words remain intact inside introduced titles and ordinary title words stay valid', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const name of ['UTC', 'America/New_York']) zone(name, () => {
+    for (const [phrase, title] of [
+      ['Tomorrow at 8 PM, remind me to review UTC notes', 'review UTC notes'],
+      ['Tomorrow at 8 PM, remind me to UTC notes: GMT, EST, +0200, Z', 'UTC notes: GMT, EST, +0200, Z'],
+      ['Tomorrow at 8 PM remember to Europe/Paris notes', 'Europe/Paris notes'],
+      ['Tomorrow at 8 PM to UTC notes', 'UTC notes'],
+      ['Mañana a las 8 de la noche, recuérdame UTC: ¡notas!', 'UTC: ¡notas!'],
+      ['Tomorrow at 8 PM, remind me to (UTC) review', '(UTC) review'],
+      ['Tomorrow at 8 PM, remind me to +0200 offset notes', '+0200 offset notes'],
+      ['Tomorrow at 8 PM, remind me to Z notes', 'Z notes'],
+      ['Tomorrow at 8 PM estimate costs', 'estimate costs'],
+      ['Mañana a las 8 PM Está listo', 'Está listo'],
+      ['Tomorrow at 8 PM UTCnotes', 'UTCnotes'],
+      ['Tomorrow at 8 PM zebra notes', 'zebra notes'],
+      ['Tomorrow at 8 PM docs/review notes', 'docs/review notes'],
+      ['Tomorrow at 8 PM in Paris review notes', 'in Paris review notes']
+    ]) {
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, `${name}: ${phrase}`);
+      assert.equal(actual.instant, name === 'UTC' ? Date.UTC(2026, 9, 18, 20) : Date.UTC(2026, 9, 19, 0), phrase);
+    }
+    assert.equal(parser.parse('Tomorrow evening remind me to UTC notes', reference).title, 'UTC notes');
+  });
+});
+
 test('leading absolute schedules retain missing-title, invalid-clock and competing-schedule rejection', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 17, 12);
   for (const phrase of [

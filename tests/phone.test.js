@@ -321,6 +321,61 @@ test('invalid leading schedules never expose confirmation or insert a pin', () =
   }
 });
 
+test('timezone-qualified leading schedules never become confirmable through the phone entrypoint', () => {
+  const previous = process.env.TZ;
+  try {
+    for (const name of ['UTC', 'America/New_York']) {
+      process.env.TZ = name;
+      for (const text of [
+        'Tomorrow at 8 PM UTC, remind me to buy bread',
+        'Tomorrow at 8 PM GMT+02:00, remind me to buy bread',
+        'Tomorrow at 8 PM EST, remind me to buy bread',
+        'Tomorrow at 8 PM +0530, remind me to buy bread',
+        'Tomorrow at 8 PM -04:00, remind me to buy bread',
+        'Tomorrow at 8 PM Z, remind me to buy bread',
+        'Tomorrow at 8 PM America/New_York, remind me to buy bread',
+        'Tomorrow at 8 PM (UTC), remind me to buy bread',
+        'Tomorrow at 8 PMUTC, remind me to buy bread',
+        'Mañana a las 8 de la noche en CET, recuérdame comprar pan',
+        'At 8 PM tomorrow Europe/Paris, remind me to buy bread',
+        'Tomorrow evening UTC, remind me to buy bread'
+      ]) {
+        const f = phone(undefined, () => Date.UTC(2026, 9, 17, 12));
+        f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 23, TEXT: text } });
+        const response = f.deliveries[0].payload;
+        assert.equal(response.STATUS, 'home', `${name}: ${text}`);
+        assert.match(response.ERROR, /clear schedule/, text);
+        assert.notEqual(response.CAN_CONFIRM, 1, text);
+        assert.equal(response.REQUEST_ID, 23);
+        assert.equal(f.pins.length, 0);
+        f.deliveries[0].success();
+        f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: response.TOKEN || 1 } });
+        assert.notEqual(f.deliveries[1].payload.CAN_CONFIRM, 1, text);
+        assert.equal(f.pins.length, 0, text);
+      }
+      for (const title of ['review UTC notes', 'UTC: GMT, EST, +0200, Z', 'Europe/Paris notes', '(UTC) review']) {
+        const f = phone(undefined, () => Date.UTC(2026, 9, 17, 12));
+        f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: `Tomorrow at 8 PM, remind me to ${title}` } });
+        const draft = f.deliveries[0].payload;
+        assert.equal(draft.STATUS, 'draft');
+        assert.equal(draft.CAN_CONFIRM, 1);
+        assert.equal(draft.TITLE, title);
+        assert.equal(f.pins.length, 0);
+        f.deliveries[0].success();
+        f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+        assert.equal(f.pins.length, 1);
+        assert.equal(f.pins[0].layout.title, title);
+        assert.equal(f.pins[0].time, name === 'UTC' ? '2026-10-18T20:00:00.000Z' : '2026-10-19T00:00:00.000Z');
+        assert.equal(f.pins[0].reminders.length, 1);
+        assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('mid-sentence times and defaults require confirmation and display only local date and time', () => {
   const previous = process.env.TZ;
   try {
