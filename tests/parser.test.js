@@ -463,6 +463,89 @@ test('named days without a time default to 10 AM, keeping phone-local dates and 
   }
 }));
 
+test('trailing named-day periods use configured defaults and preserve synthetic titles', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const settings of [undefined, custom]) {
+    for (const [text, title, pm = false] of [
+      ['hablar sobre la prueba mañana en la mañana', 'hablar sobre la prueba'],
+      ['Recuérdame revisar Café MANANA POR LA MANANA!', 'revisar Café'],
+      ['Review the test tomorrow morning', 'Review the test'],
+      ['Revisar prueba tomorrow in the morning.', 'Revisar prueba'],
+      ['Revisar prueba mañana por la noche', 'Revisar prueba', true],
+      ['Review the test tomorrow evening', 'Review the test', true],
+      ['Test mañana en la tarde', 'Test', true],
+      ['Test tomorrow at night', 'Test', true]
+    ]) {
+      const actual = parser.parse(text, reference, settings);
+      const instant = settings
+        ? Date.UTC(2026, 9, 15, pm ? 18 : 9, pm ? 45 : 15)
+        : Date.UTC(2026, 9, 15, pm ? 20 : 10);
+      assert.equal(actual.title, title, text);
+      assert.equal(actual.instant, instant, text);
+      assert.equal(actual.reference, reference, text);
+    }
+  }
+  for (const text of [
+    'mañana en la mañana', 'Test mañana en la', 'Test mañana en la madrugada',
+    'Test mañana en la mañana a las 8', 'Test mañana en la mañana UTC',
+    'Test mañana en la mañana en cinco minutos', 'Test hoy mañana en la mañana',
+    'Test in five minutes tomorrow morning', 'Test tomorrow morning evening',
+    'Test por la tarde mañana en la mañana', 'Test mañana en la mañana y noche',
+    'Test cada lunes en la mañana', 'Test mañana en la mañana sobre'
+  ]) assert.throws(() => parser.parse(text, reference), undefined, text);
+}));
+
+test('trailing named-day periods use local calendar dates and reject ambiguous default wall times', () => {
+  zone('America/New_York', () => {
+    const reference = Date.UTC(2027, 2, 13, 12);
+    const actual = parser.parse('Test mañana en la mañana', reference);
+    assert.equal(actual.title, 'Test');
+    assert.equal(actual.reference, reference);
+    assert.equal(actual.instant, Date.UTC(2027, 2, 14, 14));
+    for (const [now, amTime] of [
+      [reference, '02:30'], [Date.UTC(2026, 9, 31, 12), '01:30']
+    ]) assert.throws(() => parser.parse('Test mañana en la mañana', now,
+      { amTime, pmTime: '20:00', ribbonColor: 224, autoClose: true }));
+  });
+});
+
+test('leading standalone periods choose the next configured wall time without a named day', () => zone('UTC', () => {
+  for (const [reference, day] of [
+    [Date.UTC(2026, 9, 14, 6), 14],
+    [Date.UTC(2026, 9, 14, 10), 15],
+    [Date.UTC(2026, 9, 14, 22), 15]
+  ]) {
+    for (const text of [
+      'en la mañana hablar sobre la prueba',
+      'Por la manana, hablar sobre la prueba',
+      'In the morning remind me to hablar sobre la prueba'
+    ]) {
+      const actual = parser.parse(text, reference);
+      assert.equal(actual.title, 'hablar sobre la prueba', text);
+      assert.equal(actual.instant, Date.UTC(2026, 9, day, 10), text);
+      assert.equal(actual.reference, reference, text);
+    }
+  }
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const [text, instant] of [
+    ['En la mañana hablar sobre la prueba', Date.UTC(2026, 9, 15, 9, 15)],
+    ['Por la tarde hablar sobre la prueba', Date.UTC(2026, 9, 14, 18, 45)],
+    ['In the evening remind me to hablar sobre la prueba', Date.UTC(2026, 9, 14, 18, 45)]
+  ]) {
+    const actual = parser.parse(text, reference, custom);
+    assert.equal(actual.title, 'hablar sobre la prueba', text);
+    assert.equal(actual.instant, instant, text);
+    assert.equal(actual.reference, reference, text);
+  }
+  for (const text of [
+    'En la mañana', 'En la mañana recuérdame', 'En la mañana a las ocho Test',
+    'En la mañana Test tomorrow', 'En la mañana Test en cinco minutos',
+    'En la mañana UTC Test', 'En la madrugada Test', 'Esta mañana Test'
+  ]) assert.throws(() => parser.parse(text, reference), undefined, text);
+}));
+
 test('no day or time defaults to 8 PM today before the cutoff, otherwise 10 AM tomorrow', () => zone('UTC', () => {
   for (const [reference, expected] of [
     [Date.UTC(2026, 9, 14, 0), Date.UTC(2026, 9, 14, 20)],
@@ -515,7 +598,7 @@ test('invalid or conflicting time expressions never silently become defaulted re
     'Test tomorrow at 8 AM UTC about the test',
     'Test pasado mañana', 'Test pasado manana', 'Test the day after tomorrow',
     'Test pasado mañana a las 8 AM', 'Test the day after tomorrow at 8 AM',
-    'Test mañana por la noche', 'Test tomorrow evening', 'Test in the morning',
+    'Test mañana por la madrugada', 'Test tomorrow nighttime', 'Test in the morning',
     'Test yesterday', 'Test ayer', 'Test anteayer',
     'mañana', 'tomorrow', 'Recuérdame'
   ]) assert.throws(() => parser.parse(text, reference), undefined, text);

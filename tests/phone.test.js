@@ -56,6 +56,63 @@ test('actual phone entrypoint serializes delivery and creates no pin before conf
   assert.deepEqual(f.logs, []);
 });
 
+test('leading and trailing day periods create one pin only after explicit confirmation', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const reference = Date.UTC(2026, 9, 14, 12);
+    for (const text of [
+      'hablar sobre la prueba mañana en la mañana',
+      'en la mañana hablar sobre la prueba'
+    ]) {
+      const f = phone(undefined, () => reference);
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: text } });
+      const draft = f.deliveries[0].payload;
+      assert.equal(draft.STATUS, 'draft');
+      assert.equal(draft.TITLE, 'hablar sobre la prueba');
+      assert.equal(draft.WHEN, '2026-10-15 10:00 AM');
+      assert.equal(draft.CAN_CONFIRM, 1);
+      assert.equal(draft.SECONDS_UNTIL, 22 * 3600);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[0].success();
+      f.listeners.ready();
+      assert.equal(f.deliveries[1].payload.TOKEN, draft.TOKEN);
+      assert.equal(f.deliveries[1].payload.WHEN, draft.WHEN);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[1].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+      assert.deepEqual(f.logs, []);
+      f.deliveries[2].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].layout.title, 'hablar sobre la prueba');
+      assert.equal(f.pins[0].time, '2026-10-15T10:00:00.000Z');
+      assert.equal(f.pins[0].reminders.length, 1);
+      assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      assert.doesNotMatch(f.logs.join(''), /hablar|prueba|mañana/);
+    }
+    for (const text of [
+      'Test mañana en la madrugada', 'Test mañana en la mañana a las 8',
+      'Test mañana en la mañana en cinco minutos',
+      'En la mañana Test tomorrow', 'En la mañana a las ocho Test',
+      'En la mañana Test en cinco minutos'
+    ]) {
+      const rejected = phone(undefined, () => reference);
+      rejected.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: text } });
+      assert.equal(rejected.deliveries[0].payload.STATUS, 'home', text);
+      assert.ok(rejected.deliveries[0].payload.ERROR, text);
+      assert.notEqual(rejected.deliveries[0].payload.CAN_CONFIRM, 1, text);
+      rejected.deliveries[0].success();
+      rejected.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: 1 } });
+      assert.equal(rejected.pins.length, 0, text);
+      assert.doesNotMatch(rejected.logs.join(''), /Test|mañana|minutos|ocho/);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('ready, parse, cancel and failed requests retain their watch request correlation', () => {
   const f = phone();
   f.listeners.ready();
