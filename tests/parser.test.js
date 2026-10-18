@@ -1,0 +1,1085 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const parser = require('../app/src/pkjs/parser');
+
+function zone(name, run) {
+  const previous = process.env.TZ;
+  process.env.TZ = name;
+  try { run(); } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+}
+
+test('relative phrases use the captured reference, not the confirmation clock', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const draft = parser.parse('Remind me to Buy milk in 20 minutes', reference);
+  assert.equal(draft.title, 'Buy milk');
+  assert.equal(draft.instant, reference + 20 * 60000);
+  parser.validate(draft, reference + 10 * 60000);
+  assert.equal(draft.instant, reference + 20 * 60000);
+  assert.throws(() => parser.validate(draft, draft.instant), /passed/);
+}));
+
+test('leading relative clauses preserve original-language titles and the captured reference', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12, 34, 56, 789);
+  for (const [phrase, title, minutes = 5] of [
+    ['recuerdame en 5 minutos ver mensajes', 'ver mensajes'],
+    ['remind me in 5 minutes to see message', 'see message'],
+    ['Recuérdame en cinco minutos ver mensajes', 'ver mensajes'],
+    ['RECUÉRDAME QUE DENTRO DE FIVE MINUTOS TO ¡Ver Café!', '¡Ver Café!'],
+    ['Remind me to en cinco minutes revisar ÁNA', 'revisar ÁNA'],
+    ['in 5 minutes see message', 'see message'],
+    ['en 5 minutos to-do list', 'to-do list'],
+    ['in 5 minutes to to-do list', 'to-do list'],
+    ['in 5 minutes to 30 minutes of practice', '30 minutes of practice'],
+    ['in 5 minutes 30 items to review', '30 items to review'],
+    ['in 5 minutes 30 ideas for five minutes of practice', '30 ideas for five minutes of practice'],
+    ['in 5 minutes tomorrow planning', 'tomorrow planning'],
+    ['en cinco minutos Plan de la mañana', 'Plan de la mañana'],
+    ['in an hour to Check in with Ana', 'Check in with Ana', 60],
+    ['dentro de veintiún hours revisar Café', 'revisar Café', 21 * 60],
+    ['in 10080 minutes to Test', 'Test', 10080],
+    ['in 8784 hours to Test', 'Test', 8784 * 60],
+    ['Remind me see message in 5 minutes', 'see message']
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.reference, reference, phrase);
+    assert.equal(actual.instant, reference + minutes * 60000, phrase);
+    parser.validate(actual, reference + 60000);
+    assert.equal(actual.instant, reference + minutes * 60000, phrase);
+  }
+  assert.equal(parser.parse('in 5 minutes to ' + 'é'.repeat(80), reference).title, 'é'.repeat(80));
+  assert.throws(() => parser.parse('in 5 minutes to ' + 'é'.repeat(81), reference), /long/);
+  assert.throws(() => parser.parse('in 5 minutes to \ud800', reference), /invalid text/);
+}));
+
+test('explicit title introductions preserve AM and PM subjects after leading schedules', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const title of ['AM radio', 'PM review', 'PM: notes', 'AM radio, ¡Café!', 'PM review — ÁNA!']) {
+    for (const [prefix, instant] of [
+      ['in five minutes to ', reference + 5 * 60000],
+      ['At 8 PM remind me about ', Date.UTC(2026, 9, 17, 20)],
+      ['At 8 PM remind me to ', Date.UTC(2026, 9, 17, 20)],
+      ['At 8 PM to ', Date.UTC(2026, 9, 17, 20)],
+      ['Tomorrow at 8 PM, remind me to ', Date.UTC(2026, 9, 18, 20)],
+      ['Mañana a las 8 de la noche, recuérdame ', Date.UTC(2026, 9, 18, 20)],
+      ['Tomorrow remind me about ', Date.UTC(2026, 9, 18, 10)],
+      ['Monday remind me to ', Date.UTC(2026, 9, 19, 10)],
+      ['Tomorrow morning remind me to ', Date.UTC(2026, 9, 18, 10)],
+      ['Tomorrow afternoon remind me to ', Date.UTC(2026, 9, 18, 20)],
+      ['Tomorrow evening remind me about ', Date.UTC(2026, 9, 18, 20)],
+      ['Tomorrow at night, remind me to ', Date.UTC(2026, 9, 18, 20)],
+      ['2026-10-20 at 8 PM, remind me to ', Date.UTC(2026, 9, 20, 20)]
+    ]) {
+      const phrase = prefix + title;
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.reference, reference, phrase);
+      assert.equal(actual.instant, instant, phrase);
+      parser.validate(actual, reference + 60000);
+    }
+  }
+  for (const phrase of [
+    'At 13 PM remind me about AM radio',
+    'Tomorrow at 8 PM AM, remind me to PM review',
+    'Tomorrow at 8 PM p.m., remind me to AM radio',
+    'Tomorrow at 8 30, remind me to PM review',
+    'Tomorrow at 8 : 60 PM, remind me to AM radio',
+    'Tomorrow at 8 PM UTC, remind me to PM review'
+  ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+}));
+
+test('leading relative clauses reject missing titles, modifiers and additional or invalid schedules', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const phrase of [
+    'remind me', 'remind me to', 'remind me in five minutes',
+    'Recuérdame en cinco minutos', 'in five minutes to', 'in five minutes TO!',
+    'in five minutes to .', 'in five minutes .', 'in five minutes to to',
+    'remind me in 5 hours 30 minutes to Test',
+    'recuerdame en 5 horas 30 minutos ver mensajes',
+    'in 5 minutes 30 seconds to Test',
+    'in five hours thirty minutes to Test',
+    'en cinco horas TREINTA Y CINCO minutos ver mensajes',
+    'in five minutes veintidós segundos to Test',
+    'in five minutes two days to Test',
+    'en cinco minutos dos semanas ver mensajes',
+    'in five minutes three months to Test',
+    'in five minutes four years to Test',
+    'in five minutes 1.5 seconds to Test',
+    'in five minutes -30 seconds to Test',
+    'in five minutes later see message', 'en cinco minutos más ver mensajes',
+    'in five minutes from now to see message', 'in five minutes ago see message',
+    'en cinco minutos después ver mensajes', 'in five minutes and see message',
+    'in five minutes to Test in ten minutes',
+    'in five minutes to Test en -5 minutos',
+    'in five minutes to Test tomorrow at 15:30',
+    'in five minutes to Test tomorrow',
+    'in five minutes to Test at three',
+    'in five minutes to Test in two days',
+    'in five minutes to Test in half an hour',
+    'in five minutes to Test tonight',
+    'in five minutes to Test por la tarde',
+    'in five minutes to Test at noon',
+    'in five minutes to Test at 25:00',
+    'in five minutes to Test (en diez minutos)',
+    'in five minutes to Test, tomorrow at 15:30',
+    'in five minutes to Test daily',
+    'in five minutes to Test next Friday',
+    'in zero minutes to Test', 'en cero minutos ver mensajes',
+    'in -5 minutes to Test', 'in +5 minutes to Test',
+    'in 1.5 minutes to Test', 'en 1,5 horas ver mensajes',
+    'in twenty y uno minutes to Test', 'en treinta five minutos ver mensajes',
+    'in one hundred minutes to Test', 'in a few minutes to Test',
+    'en medio minuto ver mensajes', 'in 10081 minutes to Test',
+    'in 8785 hours to Test', 'in 10080 hours to Test',
+    'in five seconds to Test', 'en cinco días ver mensajes',
+    'in five mins to Test', 'in five to Test'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+}));
+
+test('explicit grammar supports today, tomorrow, weekday, ISO date and AM/PM', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const [phrase, instant] of [
+    ['Test today at 15:30', Date.UTC(2026, 9, 14, 15, 30)],
+    ['Test tomorrow at 3 PM', Date.UTC(2026, 9, 15, 15)],
+    ['Test on friday at 12 AM', Date.UTC(2026, 9, 16)],
+    ['Test 2026-10-20 at 12 PM', Date.UTC(2026, 9, 20, 12)],
+    ['Test in an hour', reference + 3600000]
+  ]) assert.equal(parser.parse(phrase, reference).instant, instant);
+}));
+
+test('Spanish and English grammar can be mixed independently without changing the title', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const [phrase, title, instant] of [
+    ['Recuérdame comprar leche mañana a las 3 PM', 'comprar leche', Date.UTC(2026, 9, 15, 15)],
+    ['remind me to llamar a Ana en veinte minutes', 'llamar a Ana', reference + 20 * 60000],
+    ['Comprar leche tomorrow at 15:30', 'Comprar leche', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Call Sam en cinco minutos', 'Call Sam', reference + 5 * 60000],
+    ['Test el miércoles a las 15:30', 'Test', Date.UTC(2026, 9, 14, 15, 30)],
+    ['RECUERDAME QUE Llamar a ÁNA hoy at 15:30.', 'Llamar a ÁNA', Date.UTC(2026, 9, 14, 15, 30)],
+    ['Recordarme revisar Café Mañana pendiente mañana a la 3 PM!', 'revisar Café Mañana pendiente', Date.UTC(2026, 9, 15, 15)],
+    ['Recuérdame que enviar el Diseño in twenty one minutos', 'enviar el Diseño', reference + 21 * 60000],
+    ['Test dentro de two horas', 'Test', reference + 120 * 60000],
+    ['Test in veintiún hours', 'Test', reference + 21 * 3600000],
+    ['Test en 2 hours', 'Test', reference + 2 * 3600000],
+    ['Test 2026-10-20 a las 15:30', 'Test', Date.UTC(2026, 9, 20, 15, 30)],
+    ['Test el tomorrow a la 3PM', 'Test', Date.UTC(2026, 9, 15, 15)]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, instant, phrase);
+  }
+}));
+
+test('weekday aliases, articles, accents and case resolve the same phone-local day', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const aliases = [
+    ['sunday', 'domingo'], ['monday', 'lunes'], ['tuesday', 'martes'],
+    ['wednesday', 'miércoles', 'miercoles'], ['thursday', 'jueves'],
+    ['friday', 'viernes'], ['saturday', 'sábado', 'sabado']
+  ];
+  aliases.forEach((names, index) => {
+    const days = (index - 3 + 7) % 7;
+    for (const name of names) {
+      for (const article of ['', 'on ', 'el ']) {
+        const phrase = 'Test ' + article + name.toUpperCase() + ' a las 15:30';
+        assert.equal(parser.parse(phrase, reference).instant, reference + days * 86400000 + 210 * 60000, phrase);
+      }
+    }
+  });
+  assert.equal(parser.parse('Test MANANA at 3 PM', reference).instant, Date.UTC(2026, 9, 15, 15));
+}));
+
+test('written relative counts are exact, bounded and interchangeable with connectors and units', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const counts = [
+    ['a', 1], ['an', 1], ['one', 1], ['un', 1], ['una', 1], ['uno', 1],
+    ['two', 2], ['dos', 2], ['three', 3], ['tres', 3], ['four', 4], ['cuatro', 4],
+    ['five', 5], ['cinco', 5], ['six', 6], ['seis', 6], ['seven', 7], ['siete', 7],
+    ['eight', 8], ['ocho', 8], ['nine', 9], ['nueve', 9], ['ten', 10], ['diez', 10],
+    ['eleven', 11], ['once', 11], ['twelve', 12], ['doce', 12], ['thirteen', 13], ['trece', 13],
+    ['fourteen', 14], ['catorce', 14], ['fifteen', 15], ['quince', 15],
+    ['sixteen', 16], ['dieciséis', 16], ['dieciseis', 16], ['seventeen', 17], ['diecisiete', 17],
+    ['eighteen', 18], ['dieciocho', 18], ['nineteen', 19], ['diecinueve', 19],
+    ['twenty', 20], ['veinte', 20], ['twenty one', 21], ['twenty-one', 21], ['veintiuno', 21],
+    ['veintidós', 22], ['veintidos', 22], ['veintitrés', 23], ['veintitres', 23],
+    ['veintiséis', 26], ['veintiseis', 26], ['veintinueve', 29],
+    ['treinta', 30], ['thirty five', 35], ['treinta y cinco', 35],
+    ['forty', 40], ['cuarenta y dos', 42], ['fifty', 50], ['cincuenta y uno', 51],
+    ['sixty', 60], ['sesenta y dos', 62], ['seventy', 70], ['setenta y tres', 73],
+    ['eighty', 80], ['ochenta y cuatro', 84], ['ninety nine', 99], ['noventa y nueve', 99],
+    ['100', 100], ['10080', 10080]
+  ];
+  for (const [count, value] of counts) {
+    for (const connector of ['in', 'en', 'dentro de']) {
+      for (const unit of ['minute', 'minutes', 'minuto', 'minutos', 'hour', 'hours', 'hora', 'horas']) {
+        // The existing interval limit is 10080; draft() still bounds the result to a year.
+        if (value === 10080 && /hour|hora/.test(unit)) continue;
+        const phrase = `Test ${connector} ${count.toUpperCase()} ${unit}`;
+        assert.equal(parser.parse(phrase, reference).instant, reference + value * (/hour|hora/.test(unit) ? 60 : 1) * 60000, phrase);
+        const leading = `${connector} ${count.toUpperCase()} ${unit} to Test`;
+        const actual = parser.parse(leading, reference);
+        assert.equal(actual.title, 'Test', leading);
+        assert.equal(actual.instant, reference + value * (/hour|hora/.test(unit) ? 60 : 1) * 60000, leading);
+      }
+    }
+  }
+}));
+
+test('explicit clock words and day periods retain their conservative bounds', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const [clock, hour, minute] of [
+    ['tres PM', 15, 0], ['una AM', 1, 0], ['doce AM', 0, 0], ['doce PM', 12, 0],
+    ['TRES Y TREINTA Y CINCO PM', 15, 35], ['tres y five PM', 15, 5],
+    ['three y veinte PM', 15, 20], ['veintitrés y cincuenta y nueve de la noche', 23, 59],
+    ['tres de la tarde', 15, 0], ['quince de la tarde', 15, 0],
+    ['once de la mañana', 11, 0], ['once de la manana', 11, 0],
+    ['ocho y cero de la noche', 20, 0], ['veinte de la noche', 20, 0],
+    ['3:05 de la tarde', 15, 5], ['23:59', 23, 59], ['0:00', 0, 0]
+  ]) {
+    const phrase = 'Test mañana a las ' + clock;
+    assert.equal(parser.parse(phrase, reference).instant, Date.UTC(2026, 9, 15, hour, minute), phrase);
+  }
+  for (const clock of [
+    '3 de la noche', '12 de la noche',
+    'doce de la mañana', 'doce de la tarde', 'ocho de la tarde', 'cero AM',
+    'veintitrés PM', 'veinticuatro de la noche', 'tres y sesenta PM',
+    'tres y media PM', 'tres y cuarto PM', 'tres menos cinco PM',
+    'three thirty PM', '3:5 PM', '3 y -5 PM', '3 y 1.5 PM'
+  ]) assert.throws(() => parser.parse('Test mañana a las ' + clock, reference), undefined, clock);
+}));
+
+test('title extraction preserves original accents, case and punctuation, with existing whitespace and byte rules', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  const what = '¡Llamar a ÁNA! — Café, pingüino & MIÉRCOLES especial';
+  assert.equal(parser.parse('Recuérdame que ' + what + ' mañana a las 3 PM', reference).title, what);
+  assert.equal(parser.parse('  RECUÉRDAME   Café   con ÁNA  en cinco minutos  ', reference).title, 'Café con ÁNA');
+  assert.equal(parser.parse('é'.repeat(80) + ' en cinco minutos', reference).title, 'é'.repeat(80));
+  assert.throws(() => parser.parse('é'.repeat(81) + ' en cinco minutos', reference), /long/);
+  assert.throws(() => parser.parse('\ud800 en cinco minutos', reference), /invalid text/);
+  // Prefixes are anchored full words, not substring replacement or locale detection.
+  assert.equal(parser.parse('Recordar el café en cinco minutos', reference).title, 'el café');
+  assert.equal(parser.parse('Mi recuérdame favorito en cinco minutos', reference).title, 'Mi recuérdame favorito');
+}));
+
+test('competing schedules cannot silently become title text, but overlapping ordinary words can', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const phrase of [
+    'Test in five minutes en diez minutos',
+    'Test en cinco minutos tomorrow at 15:30',
+    'Test tomorrow at 3 PM en cinco minutos',
+    'Test hoy a las tres PM tomorrow at 15:30',
+    'Test mañana a las tres tomorrow at 15:30',
+    'Test tomorrow today at 15:30',
+    'Test tomorrow and hoy at 15:30',
+    'Test at 3 PM tomorrow at 15:30',
+    'Test a las tres PM en cinco minutos',
+    'Test at 15:30 en cinco minutos',
+    'Test in half an hour en cinco minutos',
+    'Test en -5 minutos in twenty minutes',
+    'Check in with Ana en cinco minutos in ten minutes',
+    'Test in five minutes, tomorrow at 15:30',
+    'Test (en cinco minutos) tomorrow at 15:30',
+    'Test (a las tres PM), en cinco minutos',
+    'Test tomorrow, hoy at 15:30',
+    'Discuss today at home and tomorrow at three en cinco minutos',
+    'Test de lunes a viernes a las 15:30',
+    'Test Monday through Friday at 15:30'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  for (const what of [
+    'tomorrow planning', 'mañana planning', 'Call Friday team', 'Go in with Ana',
+    'Pensar en Ana', 'Ir dentro de casa', 'Look at one point', 'Mirar a la niña',
+    'Read at home', 'Look at thirteen points', 'Comprar el miércoles especial', 'Revisar minutos y horas',
+    'Plan de la mañana', 'Call on Sam', 'Research at scale'
+  ]) {
+    assert.equal(parser.parse(what + ' en cinco minutes', reference).title, what);
+    assert.equal(parser.parse(what + ' tomorrow at 15:30', reference).title, what);
+  }
+}));
+
+test('relative candidates require clarification for conflicting dates and additional clocks', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const phrase of [
+    'Prueba mañana en veinte minutos',
+    'Test 2026-10-20 en veinte minutos',
+    'Prueba a las tres en veinte minutos',
+    'Test tomorrow in twenty minutes',
+    'Prueba MANANA dentro de twenty minutos',
+    'Test el miércoles en veinte minutos',
+    'Test on Friday in twenty minutes',
+    'Test at three in twenty minutes',
+    'Test a la una en veinte minutos',
+    'Test at twenty one en veinte minutos',
+    'Test a las tres y treinta y cinco en veinte minutos',
+    'Test at three, en veinte minutos',
+    'Test at three and in twenty minutes',
+    'Test a las tres tomorrow at 15:30'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  for (const what of ['Look at one point', 'tomorrow planning', 'mañana planning', 'Plan de la mañana']) {
+    const result = parser.parse(what + ' en veinte minutos', reference);
+    assert.equal(result.title, what);
+    assert.equal(result.instant, reference + 20 * 60000);
+  }
+}));
+
+test('Spanish and mixed unsupported, negative, fractional and recurring expressions are rejected', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const phrase of [
+    'Recuérdame en cinco minutos',
+    'Test en cero minutos', 'Test en zero hours', 'Test en -1 minutos', 'Test in +1 hours',
+    'Test en 1.5 minutos', 'Test en 1,5 horas', 'Test en menos cinco minutos',
+    'Test en una y media horas', 'Test en medio minuto', 'Test in a few minutes',
+    'Test in twenty y uno minutes', 'Test en treinta five minutos',
+    'Test en cien minutos', 'Test in one hundred minutes', 'Test en 10081 minutos',
+    'Test en veintiunodos minutos', 'Test in twenty zero minutes', 'Test en dos minutos más',
+    'Test la próxima semana a las 15:30', 'Test el siguiente miércoles a las 15:30',
+    'Test cada día en cinco minutos', 'Test todos los días tomorrow at 15:30',
+    'Test todas las semanas en cinco minutos', 'Test diariamente mañana at 15:30',
+    'Test semanalmente in two hours', 'Test mensual en cinco minutos',
+    'Test recurrente hoy at 15:30', 'Test a diario en cinco minutos',
+    'Test (cada día) en cinco minutos', 'Test:próximo viernes en cinco minutos',
+    'Test los lunes a las 15:30', 'Test los sábados in five minutes',
+    'Test Mondays en cinco minutos', 'Test on weekdays tomorrow at 15:30',
+    'Test hoy a las 11:59 AM', 'Test el miércoles a las 11:00 AM',
+    'Test 2027-02-30 a las 15:30', 'Test mañana a las 24:00',
+    'Test mañana a las 3:5', 'Test mañana a las 15:60'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+}));
+
+test('empty, ambiguous, invalid, past and unsupported expressions require clarification', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const phrase of [
+    '', 'Test tomorrow at thirty', 'Test next week at 13:00',
+    'Test daily at 13:00', 'Test in 0 minutes', 'Test in -1 hours', 'Test in 99999 hours',
+    'Test today at 11:59 AM', 'Test wednesday at 11:00 AM', 'Test 2027-02-30 at 13:00',
+    'Test 2026-13-01 at 13:00', 'Test tomorrow at 24:00', 'Test tomorrow at 15:60',
+    'Test tomorrow at 0 PM', 'Test tomorrow at 13 AM', 'Test 2028-01-01 at 13:00'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  assert.throws(() => parser.parse('Test in 1 hour', NaN), /clock/);
+}));
+
+test('rejects DST gaps and overlaps, including half-hour transitions', () => {
+  zone('America/New_York', () => {
+    assert.throws(() => parser.resolveWall([2027, 3, 14, 2, 30]), /gap/);
+    assert.throws(() => parser.resolveWall([2026, 11, 1, 1, 30]), /twice/);
+    assert.equal(parser.resolveWall([2026, 11, 1, 3, 0]), Date.UTC(2026, 10, 1, 8));
+  });
+  zone('Australia/Lord_Howe', () => {
+    assert.throws(() => parser.resolveWall([2026, 10, 4, 2, 15]), /gap/);
+    assert.throws(() => parser.resolveWall([2027, 4, 4, 1, 45]), /twice/);
+  });
+});
+
+test('bilingual absolute parsing keeps DST gap and overlap rejection unchanged', () => {
+  zone('America/New_York', () => {
+    assert.throws(() => parser.parse('Recuérdame probar 2027-03-14 a las dos y treinta AM', Date.UTC(2027, 2, 13, 12)), /gap/);
+    assert.throws(() => parser.parse('Test 2026-11-01 a la una y treinta AM', Date.UTC(2026, 9, 31, 12)), /twice/);
+    assert.equal(parser.parse('Test 2026-11-01 a las tres AM', Date.UTC(2026, 9, 31, 12)).instant, Date.UTC(2026, 10, 1, 8));
+    const reference = Date.UTC(2026, 9, 31, 12);
+    assert.equal(parser.parse('Test en cuarenta y ocho hours', reference).instant, reference + 48 * 3600000);
+  });
+  zone('Australia/Lord_Howe', () => {
+    assert.throws(() => parser.parse('Test 2026-10-04 a las dos y quince AM', Date.UTC(2026, 9, 3, 0)), /gap/);
+    assert.throws(() => parser.parse('Test 2027-04-04 a las una y cuarenta y cinco AM', Date.UTC(2027, 3, 3, 0)), /twice/);
+  });
+});
+
+test('timezone travel invalidates a draft, ordinary clock/DST progress does not', () => {
+  const reference = Date.UTC(2026, 9, 31, 12);
+  let draft;
+  zone('America/New_York', () => {
+    draft = parser.parse('Test in 48 hours', reference);
+    parser.validate(draft, reference + 24 * 3600000);
+    assert.equal(parser.localDisplay(draft.instant), '2026-11-02 7:00 AM');
+  });
+  zone('Europe/Paris', () => assert.throws(() => parser.validate(draft, reference), /timezone/));
+});
+
+test('titles have a UTF-8 byte bound and reject malformed Unicode', () => {
+  assert.equal(parser.title('  Buy   milk  '), 'Buy milk');
+  assert.equal(parser.title('a'.repeat(160)).length, 160);
+  assert.equal(parser.title('é'.repeat(80)).length, 80);
+  assert.throws(() => parser.title('é'.repeat(81)), /long/);
+  assert.throws(() => parser.title('\ud800'), /invalid text/);
+  assert.throws(() => parser.title(' '), /title/);
+});
+
+test('manual editing resolves phone wall time and still requires future valid dates', () => zone('UTC', () => {
+  const now = Date.UTC(2026, 9, 14, 12);
+  const draft = parser.parse('Test in 20 minutes', now);
+  const edited = parser.withTime(draft, '2026-10-15', '16:45', now);
+  assert.equal(edited.instant, Date.UTC(2026, 9, 15, 16, 45));
+  assert.throws(() => parser.withTime(draft, '2026-02-30', '16:45', now), /Invalid date/);
+  assert.throws(() => parser.withTime(draft, '2026-10-15', '24:00', now), /valid date/);
+  assert.throws(() => parser.validate({ ...draft, reference: draft.instant + 1 }, now), /invalid/);
+}));
+
+test('an explicit time before a topic preserves the title and morning means AM, not tomorrow', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 6);
+  for (const [text, title, instant] of [
+    ['Enviar un mensaje mañana a las 8 de la mañana sobre la prueba', 'Enviar un mensaje sobre la prueba', Date.UTC(2026, 9, 15, 8)],
+    ['Enviar un mensaje mañana a las ocho de la mañana sobre la prueba', 'Enviar un mensaje sobre la prueba', Date.UTC(2026, 9, 15, 8)],
+    ['Enviar un mensaje hoy a las 8 de la mañana sobre la prueba', 'Enviar un mensaje sobre la prueba', Date.UTC(2026, 9, 14, 8)],
+    ['Send a message tomorrow at 8 AM about the test', 'Send a message about the test', Date.UTC(2026, 9, 15, 8)],
+    ['Enviar un mensaje tomorrow at 8AM SOBRE ¡La PRUEBA!', 'Enviar un mensaje SOBRE ¡La PRUEBA!', Date.UTC(2026, 9, 15, 8)],
+    ['Test on Friday at 15:30 about Café', 'Test about Café', Date.UTC(2026, 9, 16, 15, 30)],
+    ['Tomorrow at 8 AM about the test', 'about the test', Date.UTC(2026, 9, 15, 8)],
+    ['Check in tomorrow at 8 AM about the test', 'Check in about the test', Date.UTC(2026, 9, 15, 8)]
+  ]) {
+    const actual = parser.parse(text, reference);
+    assert.equal(actual.title, title, text);
+    assert.equal(actual.instant, instant, text);
+  }
+  assert.throws(() => parser.parse('é'.repeat(75) + ' tomorrow at 8 AM about the test', reference), /long/);
+}));
+
+test('named days without a time default to 10 AM, keeping phone-local dates and past-date rejection', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 6);
+  for (const [text, title, instant] of [
+    ['Test tomorrow', 'Test', Date.UTC(2026, 9, 15, 10)],
+    ['Recuérdame probar mañana', 'probar', Date.UTC(2026, 9, 15, 10)],
+    ['Test MANANA', 'Test', Date.UTC(2026, 9, 15, 10)],
+    ['Mañana revisar prueba', 'revisar prueba', Date.UTC(2026, 9, 15, 10)],
+    ['Test mañana sobre la prueba', 'Test sobre la prueba', Date.UTC(2026, 9, 15, 10)],
+    ['Test today', 'Test', Date.UTC(2026, 9, 14, 10)],
+    ['Test hoy', 'Test', Date.UTC(2026, 9, 14, 10)],
+    ['Test el miércoles', 'Test', Date.UTC(2026, 9, 14, 10)],
+    ['Test on Friday', 'Test', Date.UTC(2026, 9, 16, 10)],
+    ['El viernes revisar prueba', 'revisar prueba', Date.UTC(2026, 9, 16, 10)],
+    ['Test 2026-10-20', 'Test', Date.UTC(2026, 9, 20, 10)]
+  ]) {
+    const actual = parser.parse(text, reference);
+    assert.equal(actual.title, title, text);
+    assert.equal(actual.instant, instant, text);
+  }
+  for (const now of [Date.UTC(2026, 9, 14, 10), Date.UTC(2026, 9, 14, 21)]) {
+    assert.throws(() => parser.parse('Test today', now), /passed/);
+    assert.throws(() => parser.parse('Test miércoles', now), /passed/);
+    assert.equal(parser.parse('Test mañana', now).instant, Date.UTC(2026, 9, 15, 10));
+  }
+}));
+
+test('no day or time defaults to 8 PM today before the cutoff, otherwise 10 AM tomorrow', () => zone('UTC', () => {
+  for (const [reference, expected] of [
+    [Date.UTC(2026, 9, 14, 0), Date.UTC(2026, 9, 14, 20)],
+    [Date.UTC(2026, 9, 14, 19, 59, 59, 999), Date.UTC(2026, 9, 14, 20)],
+    [Date.UTC(2026, 9, 14, 20), Date.UTC(2026, 9, 15, 10)],
+    [Date.UTC(2026, 9, 14, 23, 59), Date.UTC(2026, 9, 15, 10)],
+    [Date.UTC(2026, 11, 31, 21), Date.UTC(2027, 0, 1, 10)]
+  ]) {
+    for (const text of ['Revisar la prueba', 'Remind me to revisar la prueba', 'Plan de la mañana']) {
+      const actual = parser.parse(text, reference);
+      assert.equal(actual.title, text.replace('Remind me to ', ''));
+      assert.equal(actual.instant, expected, text);
+    }
+  }
+  const reference = Date.UTC(2026, 9, 14, 19, 59);
+  const pending = parser.parse('Test', reference);
+  parser.validate(pending, reference + 30000);
+  assert.throws(() => parser.validate(pending, Date.UTC(2026, 9, 14, 20)), /passed/);
+  assert.equal(pending.instant, Date.UTC(2026, 9, 14, 20));
+}));
+
+test('default wall times follow the phone timezone and DST rather than fixed elapsed hours', () => {
+  zone('America/New_York', () => {
+    assert.equal(parser.parse('Test', Date.UTC(2026, 9, 15, 0)).instant, Date.UTC(2026, 9, 15, 14));
+    assert.equal(parser.parse('Test mañana', Date.UTC(2026, 9, 14, 12)).instant, Date.UTC(2026, 9, 15, 14));
+    assert.equal(parser.parse('Test tomorrow', Date.UTC(2027, 2, 13, 12)).instant, Date.UTC(2027, 2, 14, 14));
+    assert.equal(parser.parse('Test', Date.UTC(2026, 10, 1, 1)).instant, Date.UTC(2026, 10, 1, 15));
+    assert.equal(parser.parse('Test today', Date.UTC(2026, 10, 1, 5)).instant, Date.UTC(2026, 10, 1, 15));
+  });
+  zone('Europe/Madrid', () => {
+    assert.equal(parser.parse('Test', Date.UTC(2026, 9, 14, 17, 59)).instant, Date.UTC(2026, 9, 14, 18));
+    assert.equal(parser.parse('Test', Date.UTC(2026, 9, 14, 18)).instant, Date.UTC(2026, 9, 15, 8));
+    assert.equal(parser.parse('Test mañana', Date.UTC(2026, 11, 31, 22)).instant, Date.UTC(2027, 0, 1, 9));
+  });
+});
+
+test('invalid or conflicting time expressions never silently become defaulted reminders', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 6);
+  for (const text of [
+    'Test mañana a las thirty', 'Test at thirty', 'Test 8 de la mañana',
+    'Test eight AM', 'Test 25:00',
+    'Test in zero minutes', 'Test en pocos minutos', 'Test in three days', 'Test in 10', 'Test en 2 mins',
+    'Test por la mañana', 'Test esta mañana', 'Test de la mañana a las 8 AM',
+    'Test mañana a las 8 de la mañana sobre',
+    'Test tomorrow today', 'Tomorrow Test Friday', 'Test mañana sobre el viernes',
+    'Test tomorrow at 8 AM about tomorrow at 9 AM',
+    'Test tomorrow at 8 AM about a check in five minutes',
+    'Test tomorrow at 8 AM about tomorrow',
+    'Test tomorrow tomorrow at 8 AM about the test',
+    'Test tomorrow at 8 AM UTC about the test',
+    'Test pasado mañana', 'Test pasado manana', 'Test the day after tomorrow',
+    'Test pasado mañana a las 8 AM', 'Test the day after tomorrow at 8 AM',
+    'Test mañana por la noche', 'Test tomorrow evening', 'Test in the morning',
+    'Test yesterday', 'Test ayer', 'Test anteayer',
+    'mañana', 'tomorrow', 'Recuérdame'
+  ]) assert.throws(() => parser.parse(text, reference), undefined, text);
+}));
+
+test('requested Spanish and English phrase patterns preserve titles and resolve exact times', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 15, 6);
+  for (const [phrase, title, instant] of [
+    ['Recuérdame llamar a Manuel mañana', 'llamar a Manuel', Date.UTC(2026, 9, 16, 10)],
+    ['Llamar a Manuel el viernes', 'Llamar a Manuel', Date.UTC(2026, 9, 16, 10)],
+    ['Recordar llamar a Manuel el lunes que viene', 'llamar a Manuel', Date.UTC(2026, 9, 19, 10)],
+    ['Llamar a Manuel el próximo lunes', 'Llamar a Manuel', Date.UTC(2026, 9, 19, 10)],
+    ['Llamar a Manuel el 17 de mayo', 'Llamar a Manuel', Date.UTC(2027, 4, 17, 10)],
+    ['Llamar a Manuel hoy a las 3:30 p.m.', 'Llamar a Manuel', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Llamar a Manuel el jueves a las 3:30 de la tarde', 'Llamar a Manuel', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Llamar a Manuel el jueves al mediodía', 'Llamar a Manuel', Date.UTC(2026, 9, 15, 12)],
+    ['Llamar a Manuel en 60 minutos', 'Llamar a Manuel', reference + 3600000],
+    ['Remind me to call uncle Robert tomorrow', 'call uncle Robert', Date.UTC(2026, 9, 16, 10)],
+    ['Call uncle Robert on Tuesday', 'Call uncle Robert', Date.UTC(2026, 9, 20, 10)],
+    ['Remember to call uncle Robert this Wednesday', 'call uncle Robert', Date.UTC(2026, 9, 21, 10)],
+    ['Call uncle Robert next Wednesday', 'Call uncle Robert', Date.UTC(2026, 9, 21, 10)],
+    ['Call uncle Robert on November 21', 'Call uncle Robert', Date.UTC(2026, 10, 21, 10)],
+    ['Call uncle Robert today at 3:30 PM', 'Call uncle Robert', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Call uncle Robert on Friday at 3:30 in the afternoon', 'Call uncle Robert', Date.UTC(2026, 9, 16, 15, 30)],
+    ['Call uncle Robert on Friday at noon', 'Call uncle Robert', Date.UTC(2026, 9, 16, 12)],
+    ['Call uncle Robert in 60 minutes', 'Call uncle Robert', reference + 3600000]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, instant, phrase);
+    parser.validate(actual, reference);
+  }
+}));
+
+test('clock-first and day-after-clock phrases support dictation prefixes and keep explicit today', () => zone('UTC', () => {
+  for (const [reference, expected] of [
+    [Date.UTC(2026, 9, 15, 6), Date.UTC(2026, 9, 15, 10)],
+    [Date.UTC(2026, 9, 15, 10), Date.UTC(2026, 9, 16, 10)],
+    [Date.UTC(2026, 11, 31, 20), Date.UTC(2027, 0, 1, 10)]
+  ]) {
+    for (const phrase of [
+      'At 10 am reminde me about the practice equipment',
+      'At 10 am remind me about the practice equipment',
+      'Remind me at 10 am about the practice equipment',
+      'the practice equipment at 10 a.m.',
+      'A las 10 a.m. recuérdame the practice equipment'
+    ]) {
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, phrase.startsWith('Remind') ? 'about the practice equipment' : 'the practice equipment', phrase);
+      assert.equal(actual.instant, expected, phrase);
+    }
+  }
+  const morning = Date.UTC(2026, 9, 15, 6);
+  for (const phrase of [
+    'Follow up on the sample deployment at 10 am today',
+    'Follow up on the sample deployment today at 10 am'
+  ]) {
+    const actual = parser.parse(phrase, morning);
+    assert.equal(actual.title, 'Follow up on the sample deployment');
+    assert.equal(actual.instant, Date.UTC(2026, 9, 15, 10));
+    assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 15, 11)), /passed/);
+  }
+  for (const [phrase, expected] of [
+    ['Test at 10 AM tomorrow', Date.UTC(2026, 9, 16, 10)],
+    ['Test a las 3:30 p.m. hoy', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Test at noon on Friday', Date.UTC(2026, 9, 16, 12)],
+    ['Test at 3:30 in the afternoon', Date.UTC(2026, 9, 15, 15, 30)],
+    ['At 3:30 in the afternoon Test', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Test al mediodía', Date.UTC(2026, 9, 15, 12)],
+    ['Test at 12 a.m.', Date.UTC(2026, 9, 16, 0)],
+    ['Test at 12 p.m.', Date.UTC(2026, 9, 15, 12)],
+    ['Test at 3:30p.m.', Date.UTC(2026, 9, 15, 15, 30)],
+    ['Test tomorrow at 11: 59 PM', Date.UTC(2026, 9, 16, 23, 59)],
+    ['A las 3 : 30 p.m. Test', Date.UTC(2026, 9, 15, 15, 30)]
+  ]) assert.equal(parser.parse(phrase, morning).instant, expected, phrase);
+}));
+
+test('leading absolute schedules accept bilingual reminder prompts and an optional comma', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12, 34, 56, 789);
+  for (const [phrase, title, instant = Date.UTC(2026, 9, 18, 20)] of [
+    ['mañana a las 8 de la noche, recuerdame comprar pan', 'comprar pan'],
+    ['Mañana a las ocho de la noche, recuérdame Comprar Café', 'Comprar Café'],
+    ['mañana a las 8 de la noche recuerdame comprar pan', 'comprar pan'],
+    ['mañana a las 8 de la noche,recuerdame comprar pan', 'comprar pan'],
+    ['Recuérdame mañana a las 8 de la noche, comprar pan', 'comprar pan'],
+    ['Tomorrow at 8 PM, remind me to buy bread', 'buy bread'],
+    ['Tomorrow at 8 at night, remind me to buy bread', 'buy bread'],
+    ['Tomorrow at eight in the evening, remind me to buy bread', 'buy bread'],
+    ['Tomorrow at eight PM remind me to Buy bread', 'Buy bread'],
+    ['TOMORROW AT 8PM,REMIND ME TO Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM, remember to Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM to Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM, remind me about Café, pan y té!', 'Café, pan y té!'],
+    ['Tomorrow at 8 : 30, remind me to buy bread', 'buy bread', Date.UTC(2026, 9, 18, 8, 30)],
+    ['Tomorrow at 8 : 30 PM, remind me to buy bread: rye, not white!', 'buy bread: rye, not white!', Date.UTC(2026, 9, 18, 20, 30)],
+    ['Mañana a las 8 : 30 de la noche, recuérdame comprar pan: ¡integral!', 'comprar pan: ¡integral!', Date.UTC(2026, 9, 18, 20, 30)],
+    ['Tomorrow at 8 PM, remind me to PM: review notes', 'PM: review notes'],
+    ['Mañana a las 8 PM, recuérdame revisar PM: notas', 'revisar PM: notas'],
+    ['mañana at 8 PM, remind me to Comprar pan', 'Comprar pan'],
+    ['At 8 PM tomorrow, remind me to buy bread', 'buy bread'],
+    ['A las 8 de la noche mañana, recuérdame comprar pan', 'comprar pan'],
+    ['Tomorrow at 8 PM, remind me to to-do list', 'to-do list'],
+    ['mañana a las 8 de la mañana, recuérdame comprar pan', 'comprar pan', Date.UTC(2026, 9, 18, 8)],
+    ['At 8 PM, remind me to Buy bread', 'Buy bread', Date.UTC(2026, 9, 17, 20)],
+    ['A las 8 de la noche, recuérdame comprar pan', 'comprar pan', Date.UTC(2026, 9, 17, 20)]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, instant, phrase);
+    assert.equal(actual.reference, reference, phrase);
+    parser.validate(actual, reference + 60000);
+    assert.equal(actual.instant, instant, phrase);
+  }
+  const prefix = 'Tomorrow at 8 PM, remind me to ';
+  assert.equal(parser.parse(prefix + 'é'.repeat(80), reference).title, 'é'.repeat(80));
+  assert.throws(() => parser.parse(prefix + 'é'.repeat(81), reference), /long/);
+  assert.throws(() => parser.parse(prefix + '\ud800', reference), /invalid text/);
+}));
+
+test('leading clocks reject incomplete continuations instead of falling back to a shorter hour', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const phrase of [
+    'Tomorrow at 8 : 60, remind me to buy bread',
+    'Mañana a las 8 : 60, recuérdame comprar pan',
+    'Tomorrow at 8 : 3, remind me to buy bread',
+    'Mañana a las 8 : , recuérdame comprar pan',
+    'Tomorrow at 8 PM: remind me to buy bread',
+    'Mañana a las 8 PM: recuérdame comprar pan',
+    'Tomorrow at 8 p.m.: remind me to buy bread',
+    'Mañana a las 8 a.m.; recuérdame comprar pan',
+    'Tomorrow at 8 : 30 PM: remind me to buy bread',
+    'Mañana a las 8 : 30 de la noche: recuérdame comprar pan',
+    'Tomorrow at 8 in the evening: remind me to buy bread',
+    'Tomorrow at 8 PM : remind me to buy bread',
+    'At 8 : 60, remind me to buy bread',
+    'A las 8 PM: recuérdame comprar pan',
+    'At 8 PM tomorrow : remind me to buy bread'
+  ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+}));
+
+test('leading schedules reject timezone qualifiers before stripping title prompts', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const name of ['UTC', 'America/New_York']) zone(name, () => {
+    for (const qualifier of [
+      'UTC', 'utc', 'GMT', 'UTC+02:00', 'UTC - 4', 'GMT+0530', 'GMT-07',
+      'EST', 'EDT', 'CST', 'CDT', 'MST', 'MDT', 'PST', 'PDT', 'PT', 'ET',
+      'BST', 'CET', 'CEST', 'EET', 'IST', 'JST', 'AEST', 'NZDT',
+      '+02:00', '-0400', '+5', '−04:00', 'Z', '(UTC)', '[GMT+2]',
+      'in UTC', 'en CET', 'America/New_York', 'Europe/Paris',
+      'Asia/Kolkata', 'America/Argentina/Buenos_Aires', 'Etc/GMT+5'
+    ]) {
+      const phrase = `Tomorrow at 8 PM ${qualifier}, remind me to buy bread`;
+      assert.throws(() => parser.parse(phrase, reference), /clear schedule/, `${name}: ${phrase}`);
+    }
+    for (const phrase of [
+      'Mañana a las 8 de la noche UTC, recuérdame comprar pan',
+      'Tomorrow at 8 PM, UTC, remind me to buy bread',
+      'At 8 PM tomorrow GMT+2, remind me to buy bread',
+      'At 8 PM PST, remind me to buy bread',
+      'Tomorrow at 8 PMUTC, remind me to buy bread',
+      'Tomorrow at 8 PM+0200, remind me to buy bread',
+      'Tomorrow at 20:00Z, remind me to buy bread',
+      'Tomorrow UTC, remind me to buy bread',
+      'Tomorrow evening Europe/Paris, remind me to buy bread'
+    ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, `${name}: ${phrase}`);
+  });
+});
+
+test('timezone words remain intact inside introduced titles and ordinary title words stay valid', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const name of ['UTC', 'America/New_York']) zone(name, () => {
+    for (const [phrase, title] of [
+      ['Tomorrow at 8 PM, remind me to review UTC notes', 'review UTC notes'],
+      ['Tomorrow at 8 PM, remind me to UTC notes: GMT, EST, +0200, Z', 'UTC notes: GMT, EST, +0200, Z'],
+      ['Tomorrow at 8 PM remember to Europe/Paris notes', 'Europe/Paris notes'],
+      ['Tomorrow at 8 PM to UTC notes', 'UTC notes'],
+      ['Mañana a las 8 de la noche, recuérdame UTC: ¡notas!', 'UTC: ¡notas!'],
+      ['Tomorrow at 8 PM, remind me to (UTC) review', '(UTC) review'],
+      ['Tomorrow at 8 PM, remind me to +0200 offset notes', '+0200 offset notes'],
+      ['Tomorrow at 8 PM, remind me to Z notes', 'Z notes'],
+      ['Tomorrow at 8 PM estimate costs', 'estimate costs'],
+      ['Mañana a las 8 PM Está listo', 'Está listo'],
+      ['Tomorrow at 8 PM UTCnotes', 'UTCnotes'],
+      ['Tomorrow at 8 PM zebra notes', 'zebra notes'],
+      ['Tomorrow at 8 PM docs/review notes', 'docs/review notes'],
+      ['Tomorrow at 8 PM in Paris review notes', 'in Paris review notes']
+    ]) {
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, `${name}: ${phrase}`);
+      assert.equal(actual.instant, name === 'UTC' ? Date.UTC(2026, 9, 18, 20) : Date.UTC(2026, 9, 19, 0), phrase);
+    }
+    assert.equal(parser.parse('Tomorrow evening remind me to UTC notes', reference).title, 'UTC notes');
+  });
+});
+
+test('leading absolute schedules retain missing-title, invalid-clock and competing-schedule rejection', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const phrase of [
+    'Tomorrow at 8 PM, remind me to',
+    'Mañana a las 8 de la noche, recuérdame',
+    'Tomorrow at 8 PM,',
+    'Tomorrow at 8 PM, remind me to .',
+    'Tomorrow at 25:00, remind me to Test',
+    'Tomorrow at 13 PM, remind me to Test',
+    'Tomorrow at 13 p.m., remind me to Test',
+    'Mañana a las 7 de la noche, recuérdame Test',
+    'Mañana a las 13 de la noche, recuérdame Test',
+    'Tomorrow at 13 at night, remind me to Test',
+    'Tomorrow at 7 in the evening, remind me to Test',
+    'Tomorrow at 8 PM, remind me to Test at 9 PM',
+    'Tomorrow at 8 PM, remind me to Test tomorrow',
+    'Tomorrow at 8 PM, remind me to Test in five minutes',
+    'Tomorrow at 8 PM, remind me to Test tonight',
+    'Tomorrow at 8 PM, remind me to Test daily',
+    'Tomorrow at 8 PM, remind me to Test next month',
+    'mañana a las 8 de la noche, recuérdame Test a las 9 de la noche',
+    'mañana a las 8 de la noche, recuérdame Test en cinco minutos',
+    'Tomorrow at 8 PM, later remind me to Test'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  for (const phrase of [
+    'Today at 8 PM, remind me to Test',
+    'Hoy a las 8 de la noche, recuérdame Test',
+    '2026-10-17 at 8 PM, remind me to Test'
+  ]) assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 17, 21)), /passed/, phrase);
+  assert.equal(parser.parse('Tomorrow at 8 PM, remind me to Test', Date.UTC(2026, 11, 31, 23)).instant,
+    Date.UTC(2027, 0, 1, 20));
+}));
+
+test('leading absolute schedules keep phone-local dates and DST gap and overlap protection', () => zone('America/New_York', () => {
+  for (const phrase of [
+    'Tomorrow at 8 PM, remind me to Test',
+    'Tomorrow at 8 at night, remind me to Test',
+    'Tomorrow at 8 in the evening, remind me to Test',
+    'Mañana a las 8 de la noche, recuérdame Test'
+  ]) {
+    const actual = parser.parse(phrase, Date.UTC(2026, 9, 17, 12));
+    assert.equal(actual.instant, Date.UTC(2026, 9, 19, 0), phrase);
+    assert.equal(parser.localDisplay(actual.instant), '2026-10-18 8:00 PM', phrase);
+  }
+  for (const phrase of [
+    'Tomorrow at 2:30 AM, remind me to Test',
+    'Mañana a las 2:30 de la mañana, recuérdame Test'
+  ]) assert.throws(() => parser.parse(phrase, Date.UTC(2027, 2, 13, 12)), /gap/, phrase);
+  for (const phrase of [
+    'Tomorrow at 1:30 AM, remind me to Test',
+    'Mañana a la 1:30 de la mañana, recuérdame Test'
+  ]) assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 31, 12)), /twice/, phrase);
+}));
+
+test('leading days strip reminder prompts and use configured AM or day-period PM defaults', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const settings of [undefined, custom]) {
+    const am = settings ? [9, 15] : [10, 0];
+    const pm = settings ? [18, 45] : [20, 0];
+    for (const [phrase, title, day, usePM = false] of [
+      ['mañana recuerdame comprar leche', 'comprar leche', 18],
+      ['Mañana, recuérdame comprar Café', 'comprar Café', 18],
+      ['Monday remind me to buy milk', 'buy milk', 19],
+      ['On Monday,remind me to buy milk', 'buy milk', 19],
+      ['El lunes recuérdame comprar leche', 'comprar leche', 19],
+      ['Tomorrow remember to Buy milk', 'Buy milk', 18],
+      ['mañana en la tarde recuerdame comprar leche', 'comprar leche', 18, true],
+      ['Mañana por la tarde, recuérdame comprar Café', 'comprar Café', 18, true],
+      ['Mañana por la tarde revisar prueba', 'revisar prueba', 18, true],
+      ['Tomorrow afternoon remind me to buy milk', 'buy milk', 18, true],
+      ['Tomorrow afternoon review the test', 'review the test', 18, true],
+      ['Monday in the afternoon, remind me to buy milk', 'buy milk', 19, true],
+      ['Tomorrow evening, remind me to buy milk', 'buy milk', 18, true],
+      ['Tomorrow night remind me to buy milk', 'buy milk', 18, true],
+      ['Mañana en la noche recuérdame comprar leche', 'comprar leche', 18, true],
+      ['Tomorrow morning remind me to buy milk', 'buy milk', 18],
+      ['Mañana en la mañana recuérdame comprar leche', 'comprar leche', 18]
+    ]) {
+      const time = usePM ? pm : am;
+      const instant = Date.UTC(2026, 9, day, time[0], time[1]);
+      const actual = parser.parse(phrase, reference, settings);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.instant, instant, phrase);
+      assert.equal(actual.reference, reference, phrase);
+    }
+  }
+  assert.equal(parser.parse('Tomorrow at 8 PM, remind me to Test', reference, custom).instant,
+    Date.UTC(2026, 9, 18, 20));
+  assert.equal(parser.parse('mañana a las 8 de la noche, recuérdame Test', reference, custom).instant,
+    Date.UTC(2026, 9, 18, 20));
+}));
+
+test('leading defaulted days reject missing titles, past defaults and competing schedules', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const phrase of [
+    'Monday remind me to', 'mañana recuérdame',
+    'Tomorrow afternoon remind me to', 'Mañana en la tarde recuérdame',
+    'Tomorrow afternoon remind me to Test in five minutes',
+    'Monday remind me to Test in five minutes',
+    'Mañana en la tarde recuérdame Test a las 8',
+    'Monday remind me to Test tomorrow',
+    'Tomorrow remind me to Test daily',
+    'Tomorrow morning remind me to Test at 25:00',
+    'Mañana en la tarde recuérdame Test a las 13 PM'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  assert.throws(() => parser.parse('Monday remind me to Test', Date.UTC(2026, 9, 19, 10)), /passed/);
+  assert.throws(() => parser.parse('Monday afternoon remind me to Test', Date.UTC(2026, 9, 19, 20)), /passed/);
+  assert.equal(parser.parse('Tomorrow morning remind me to Test', Date.UTC(2026, 11, 31, 23)).instant,
+    Date.UTC(2027, 0, 1, 10));
+}));
+
+test('leading day defaults reject unparsed time connectors at the raw schedule boundary', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const [day, period, connector, time, prompt] of [
+    ['Tomorrow', 'morning', 'at', 'sunset', 'remind me to buy bread'],
+    ['Tomorrow', 'evening', 'at', 'sunrise', 'remind me to buy bread'],
+    ['Mañana', 'por la mañana', 'a las', 'amanecer', 'recuérdame comprar pan'],
+    ['Mañana', 'en la tarde', 'a la', 'puesta del sol', 'recuérdame comprar pan'],
+    ['Mañana', 'en la noche', 'al', 'amanecer', 'recuérdame comprar pan']
+  ]) {
+    for (const modifier of ['', ' ' + period]) {
+      for (const separator of [' ', ', ']) {
+        const phrase = `${day}${modifier} ${connector} ${time}${separator}${prompt}`;
+        assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+      }
+    }
+  }
+  for (const [phrase, title, hour] of [
+    ['Tomorrow remind me to at sunset, buy bread', 'at sunset, buy bread', 10],
+    ['Mañana por la mañana recuérdame al amanecer, comprar pan', 'al amanecer, comprar pan', 10],
+    ['Tomorrow afternoon remind me to review 30 items', 'review 30 items', 20],
+    ['Mañana en la tarde recuérdame 30 artículos', '30 artículos', 20]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, 18, hour), phrase);
+  }
+}));
+
+test('leading clocks reject numeric and written continuations without truncating the schedule', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const schedule of ['Tomorrow at eight', 'Tomorrow at 8', 'Mañana a las ocho', 'Mañana a la 8', 'Mañana al ocho', 'At eight', 'Tomorrow at 20', 'Mañana a las veinte']) {
+    for (const fragment of [
+      '30', '0', '60', '999', '-5', '+30', '1.5', '1,5',
+      'thirty p.m.', 'thirty', 'sixty', 'ninety-nine', 'one hundred',
+      'treinta de la noche', 'treinta y cinco', 'sesenta', 'cien', 'media', 'quarter'
+    ]) {
+      const phrase = `${schedule} ${fragment}, remind me to buy bread`;
+      assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+    }
+  }
+  for (const [phrase, title, hour, minute = 0] of [
+    ['Tomorrow at 8 : 30 PM, remind me to review 30 items', 'review 30 items', 20, 30],
+    ['Tomorrow at 8 PM, remind me to 30 items to review', '30 items to review', 20],
+    ['Tomorrow at eight remind me to thirty items to review', 'thirty items to review', 8],
+    ['Tomorrow at 8 PM to 30 items to review', '30 items to review', 20],
+    ['Mañana a las ocho y treinta de la noche, recuérdame treinta artículos', 'treinta artículos', 20, 30],
+    ['Tomorrow at 8 PM, remind me to :30, review!', ':30, review!', 20],
+    ['Tomorrow planning at 8 PM', 'Tomorrow planning', 20]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, phrase.startsWith('Tomorrow planning') ? 17 : 18, hour, minute), phrase);
+  }
+}));
+
+test('raw spaced or incomplete AM/PM qualifiers cannot truncate a leading clock', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const schedule of ['Tomorrow at 8', 'Mañana a las ocho', 'At 8']) {
+    for (const qualifier of ['p. m.', 'p m', 'p .m.', 'p . m', 'a. m.', 'a m', 'a .m.', 'p.', 'a.', 'p', 'a', 'a ', 'p ']) {
+      for (const prompt of ['remind me to buy bread', 'recuérdame comprar pan']) {
+        const phrase = `${schedule} ${qualifier}, ${prompt}`;
+        assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+      }
+    }
+  }
+  for (const [phrase, title] of [
+    ['Tomorrow at 8p.m., remind me to ¡Café, a. m.!', '¡Café, a. m.!'],
+    ['Mañana a las ocho p.m., recuérdame Revisar p. m., ÁNA!', 'Revisar p. m., ÁNA!']
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, 18, 20), phrase);
+  }
+}));
+
+test('complete leading clocks preserve connector-led and numbered titles', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const [schedule, day, hour, minute = 0] of [
+    ['At 8 PM', 17, 20], ['Tomorrow at 8 PM', 18, 20],
+    ['Mañana a las 8 de la noche', 18, 20],
+    ['Tomorrow at 20:30', 18, 20, 30], ['Mañana a las 8:30', 18, 8, 30],
+    ['At 8 PM tomorrow', 18, 20],
+    ['Mañana a las ocho y treinta', 18, 8, 30],
+    ['Tomorrow at eight', 18, 8]
+  ]) {
+    for (const title of [
+      'at home exercise', 'a las puertas de ÁNA, ¡Café!', 'a la oficina', 'al mercado', 'a home exercise'
+    ].concat(schedule.endsWith('eight') ? [] : ['30 items to review', 'treinta artículos, ¡ÁNA!', '30 minutes to review'])) {
+      const phrase = `${schedule} ${title}`;
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.instant, Date.UTC(2026, 9, day, hour, minute), phrase);
+    }
+  }
+  for (const phrase of [
+    'At 8 PM at 9 PM buy bread', 'Tomorrow at 20:30 a las 21 comprar pan'
+  ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
+}));
+
+test('leading defaulted morning periods retain DST gap and overlap rejection', () => zone('America/New_York', () => {
+  const settings = { amTime: '02:30', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const phrase of [
+    'Tomorrow morning remind me to Test',
+    'Mañana en la mañana recuérdame Test'
+  ]) {
+    assert.throws(() => parser.parse(phrase, Date.UTC(2027, 2, 13, 12), settings), /gap/, phrase);
+    assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 31, 12),
+      { ...settings, amTime: '01:30' }), /twice/, phrase);
+  }
+}));
+
+test('next weekdays are strictly after today while this and bare weekdays still include today', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 6);
+  for (const day of ['next Wednesday', 'próximo miércoles', 'proximo miercoles', 'miércoles que viene']) {
+    for (const article of ['', 'on ', 'el ']) {
+      assert.equal(parser.parse('Test ' + article + day, reference).instant, Date.UTC(2026, 9, 21, 10), day);
+      assert.equal(parser.parse('Test ' + article + day + ' at 3 PM', reference).instant, Date.UTC(2026, 9, 21, 15), day);
+    }
+  }
+  assert.equal(parser.parse('Test this Wednesday', reference).instant, Date.UTC(2026, 9, 14, 10));
+  assert.throws(() => parser.parse('Test this Wednesday', Date.UTC(2026, 9, 14, 12)), /passed/);
+  assert.equal(parser.parse('Test next Friday', reference).instant, Date.UTC(2026, 9, 16, 10));
+}));
+
+test('month/day dates roll annually only when passed and reject invalid calendar dates', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 15, 6);
+  const names = [
+    ['January', 'enero'], ['February', 'febrero'], ['March', 'marzo'], ['April', 'abril'],
+    ['May', 'mayo'], ['June', 'junio'], ['July', 'julio'], ['August', 'agosto'],
+    ['September', 'septiembre'], ['October', 'octubre'], ['November', 'noviembre'], ['December', 'diciembre']
+  ];
+  names.forEach(([english, spanish], month) => {
+    const year = month < 9 ? 2027 : 2026;
+    for (const phrase of ['Test on ' + english + ' 21', 'Test el 21 de ' + spanish]) {
+      assert.equal(parser.parse(phrase, reference).instant, Date.UTC(year, month, 21, 10), phrase);
+      assert.equal(parser.parse(phrase + ' at 3 PM', reference).instant, Date.UTC(year, month, 21, 15), phrase);
+    }
+  });
+  assert.equal(parser.parse('Test on October 15', reference).instant, Date.UTC(2026, 9, 15, 10));
+  assert.equal(parser.parse('Test el 15 de octubre', Date.UTC(2026, 9, 15, 10)).instant, Date.UTC(2027, 9, 15, 10));
+  assert.equal(parser.parse('Test on October 15 at 3 PM', Date.UTC(2026, 9, 15, 12)).instant, Date.UTC(2026, 9, 15, 15));
+  assert.equal(parser.parse('Test on February 29', Date.UTC(2028, 0, 1)).instant, Date.UTC(2028, 1, 29, 10));
+  for (const phrase of [
+    'Test on February 30', 'Test el 31 de abril', 'Test on May 0', 'Test el 32 de mayo',
+    'Test on November 21 tomorrow', 'Test next Monday in five minutes',
+    'Test on November 21 at 3 PM in five minutes', 'Test next Wednesday tomorrow at noon',
+    'At 10 AM Test at 11 AM', 'At 10 AM Test tomorrow', 'Test at 10 AM at 11 AM today',
+    'Test at 13 p.m.', 'Test at 25:00', 'Test at 3:30 in the afternoon tomorrow at noon',
+    'Test el lunes que viene el viernes', 'Test next month', 'Test on November 21 at thirty'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+}));
+
+test('new clock and named-date forms retain DST gap and overlap protection', () => zone('America/New_York', () => {
+  assert.throws(() => parser.parse('Test at 2:30 AM', Date.UTC(2027, 2, 14, 5)), /gap/);
+  assert.throws(() => parser.parse('Test on March 14 at 2:30 AM', Date.UTC(2027, 2, 13, 12)), /gap/);
+  assert.throws(() => parser.parse('Test at 1:30 AM', Date.UTC(2026, 10, 1, 4)), /twice/);
+  assert.equal(parser.parse('Test at 10 AM', Date.UTC(2027, 2, 13, 16)).instant, Date.UTC(2027, 2, 14, 14));
+}));
+
+test('confirmation displays local date and 12-hour time with explicit AM/PM', () => zone('UTC', () => {
+  for (const [hour, minute, expected] of [
+    [0, 0, '12:00 AM'], [0, 5, '12:05 AM'], [8, 9, '8:09 AM'],
+    [11, 59, '11:59 AM'], [12, 0, '12:00 PM'], [15, 30, '3:30 PM'],
+    [23, 59, '11:59 PM']
+  ]) {
+    assert.equal(parser.localDisplay(Date.UTC(2026, 9, 15, hour, minute)), '2026-10-15 ' + expected);
+  }
+}));
+
+test('unmarked clocks select the next AM or PM occurrence and remove a leading title connector', () => zone('UTC', () => {
+  for (const [reference, expected] of [
+    [Date.UTC(2026, 9, 15, 6), Date.UTC(2026, 9, 15, 8, 30)],
+    [Date.UTC(2026, 9, 15, 8, 30), Date.UTC(2026, 9, 15, 20, 30)],
+    [Date.UTC(2026, 9, 15, 11, 37), Date.UTC(2026, 9, 15, 20, 30)],
+    [Date.UTC(2026, 9, 15, 20, 29, 59), Date.UTC(2026, 9, 15, 20, 30)],
+    [Date.UTC(2026, 9, 15, 20, 30), Date.UTC(2026, 9, 16, 8, 30)],
+    [Date.UTC(2026, 11, 31, 23), Date.UTC(2027, 0, 1, 8, 30)]
+  ]) {
+    for (const [phrase, title] of [
+      ['remind me at 8:30 to check out the game', 'check out the game'],
+      ['At 08:30 to Check the game', 'Check the game'],
+      ['Check the game at 8 : 30', 'Check the game'],
+      ['Recuérdame revisar el juego a las ocho y treinta', 'revisar el juego']
+    ]) {
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.instant, expected, phrase);
+      assert.equal(actual.reference, reference);
+    }
+  }
+  const reference = Date.UTC(2026, 9, 15, 11, 37);
+  assert.equal(parser.parse('At 8:30 PM to-do list', reference).title, 'to-do list');
+  assert.equal(parser.parse('At 8:30 to to-do list', reference).title, 'to-do list');
+  for (const phrase of ['At 8:30 to', 'At 8 to', 'At eight', 'A las ocho recuérdame']) {
+    assert.throws(() => parser.parse(phrase, reference), /title/);
+  }
+  const actual = parser.parse('Test at 8:30', reference);
+  assert.throws(() => parser.validate(actual, actual.instant), /passed/);
+  assert.equal(actual.instant, Date.UTC(2026, 9, 15, 20, 30));
+}));
+
+test('unmarked whole hours and twelve resolve strictly after the captured reference', () => zone('UTC', () => {
+  for (let hour = 1; hour <= 12; hour++) {
+    for (const referenceHour of [0, 6, 11, 12, 18, 23]) {
+      const reference = Date.UTC(2026, 9, 15, referenceHour);
+      const am = Date.UTC(2026, 9, 15, hour % 12);
+      const pm = am + 12 * 3600000;
+      const expected = am > reference ? am : pm > reference ? pm : am + 86400000;
+      assert.equal(parser.parse('Test at ' + hour, reference).instant, expected);
+    }
+  }
+  const reference = Date.UTC(2026, 9, 15, 11, 37);
+  for (const clock of ['8', 'eight', 'ocho']) {
+    assert.equal(parser.parse('Test at ' + clock, reference).instant, Date.UTC(2026, 9, 15, 20));
+  }
+  assert.equal(parser.parse('Test at twelve', reference).instant, Date.UTC(2026, 9, 15, 12));
+  assert.equal(parser.parse('Test at doce', Date.UTC(2026, 9, 15, 12)).instant, Date.UTC(2026, 9, 16));
+}));
+
+test('dated unmarked clocks choose the earliest future AM/PM on that date without rolling explicit dates', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 15, 11, 37);
+  for (const [phrase, expected] of [
+    ['Test today at 8:30', Date.UTC(2026, 9, 15, 20, 30)],
+    ['Test a las ocho hoy', Date.UTC(2026, 9, 15, 20)],
+    ['Test on Thursday at 8:30', Date.UTC(2026, 9, 15, 20, 30)],
+    ['Test tomorrow at 8:30', Date.UTC(2026, 9, 16, 8, 30)],
+    ['Test next Thursday at eight', Date.UTC(2026, 9, 22, 8)],
+    ['Test on November 21 at three', Date.UTC(2026, 10, 21, 3)],
+    ['Test on October 15 at 8:30', Date.UTC(2026, 9, 15, 20, 30)],
+    ['Test el 15 de octubre a las doce', Date.UTC(2026, 9, 15, 12)],
+    ['Test 2026-10-15 at 8:30', Date.UTC(2026, 9, 15, 20, 30)]
+  ]) assert.equal(parser.parse(phrase, reference).instant, expected, phrase);
+  const evening = Date.UTC(2026, 9, 15, 21);
+  for (const phrase of ['Test today at 8:30', 'Test Thursday at eight', 'Test 2026-10-15 at 8:30']) {
+    assert.throws(() => parser.parse(phrase, evening), /passed/, phrase);
+  }
+  assert.equal(parser.parse('Test on October 15 at 8:30', evening).instant, Date.UTC(2027, 9, 15, 8, 30));
+  assert.throws(() => parser.parse('Test 2026-10-14 at 8:30', reference), /passed/);
+}));
+
+test('explicit periods, 24-hour clocks, and DST validation are unchanged by AM/PM inference', () => {
+  zone('UTC', () => {
+    const reference = Date.UTC(2026, 9, 15, 11, 37);
+    for (const [phrase, expected] of [
+      ['Test at 8:30 AM', Date.UTC(2026, 9, 16, 8, 30)],
+      ['Test at 8:30 PM', Date.UTC(2026, 9, 15, 20, 30)],
+      ['Test at 15:30', Date.UTC(2026, 9, 15, 15, 30)],
+      ['Test at 00:30', Date.UTC(2026, 9, 16, 0, 30)],
+      ['Test mañana a las quince', Date.UTC(2026, 9, 16, 15)]
+    ]) assert.equal(parser.parse(phrase, reference).instant, expected, phrase);
+    assert.throws(() => parser.parse('Test today at 8:30 AM', reference), /passed/);
+  });
+  zone('America/New_York', () => {
+    assert.throws(() => parser.parse('Test at 2:30', Date.UTC(2027, 2, 14, 5)), /gap/);
+    assert.throws(() => parser.parse('Test tomorrow at 2:30', Date.UTC(2027, 2, 13, 12)), /gap/);
+    assert.throws(() => parser.parse('Test at 1:30', Date.UTC(2026, 10, 1, 4)), /twice/);
+    assert.equal(parser.parse('Test at 8:30', Date.UTC(2027, 2, 14, 14)).instant, Date.UTC(2027, 2, 15, 0, 30));
+  });
+});

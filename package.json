@@ -1,0 +1,11 @@
+{
+  "name": "pebble-quickreminders",
+  "version": "0.3.1",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

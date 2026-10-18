@@ -1,0 +1,41 @@
+{
+  "name": "quickreminders",
+  "version": "0.3.1",
+  "private": true,
+  "author": "QuickReminders contributors",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Quick Reminders",
+    "uuid": "14271b76-899a-475b-b4c6-10a2d39bc65d",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "capabilities": ["configurable"],
+    "targetPlatforms": ["basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
+    "watchapp": { "watchface": false },
+    "messageKeys": [
+      "COMMAND",
+      "TEXT",
+      "TOKEN",
+      "TITLE",
+      "WHEN",
+      "STATUS",
+      "CAN_CONFIRM",
+      "ERROR",
+      "SECONDS_UNTIL",
+      "REQUEST_ID",
+      "RIBBON_COLOR",
+      "AUTO_CLOSE"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
+        }
+      ]
+    }
+  }
+}
