@@ -1,6 +1,6 @@
 {
   "name": "quickreminders",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "author": "QuickReminders contributors",
   "license": "Apache-2.0",
@@ -11,7 +11,7 @@
     "sdkVersion": "3",
     "enableMultiJS": true,
     "capabilities": ["configurable"],
-    "targetPlatforms": ["gabbro"],
+    "targetPlatforms": ["basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
     "watchapp": { "watchface": false },
     "messageKeys": [
       "COMMAND",

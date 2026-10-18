@@ -4,7 +4,6 @@
 #define WHEN_SIZE 80
 #define REVIEW_INSET 6
 #define TITLE_DESCENDER_PAD 8
-#define DETAILS_LINE_HEIGHT 24
 #define SETTINGS_KEY 1
 
 static Window *s_review_window;
@@ -262,8 +261,22 @@ static void review_clicks(void *context) {
   window_single_click_subscribe(BUTTON_ID_BACK, review_back);
 }
 
+static GColor ribbon_color(void) {
+  return PBL_IF_COLOR_ELSE(GColorFromRGB(
+    ((s_ribbon_color >> 4) & 3) * 85, ((s_ribbon_color >> 2) & 3) * 85,
+    (s_ribbon_color & 3) * 85), GColorBlack);
+}
+
 static void render_review(void) {
   bool separate_title = s_reviewing_reminder && s_title[0] && !s_notice[0];
+  GSize bounds = layer_get_bounds(scroll_layer_get_layer(s_scroll)).size;
+  int screen_width = layer_get_bounds(window_get_root_layer(s_review_window)).size.w;
+  char when[WHEN_SIZE];
+  snprintf(when, sizeof(when), "%s", s_when);
+  if (screen_width < 200) {
+    char *space = strchr(when, ' ');
+    if (space) *space = '\n';
+  }
   if (s_action_bar) {
     action_bar_layer_set_click_config_provider(s_action_bar, review_clicks);
     int icon = s_reload_required ? ICON_RELOAD :
@@ -277,7 +290,7 @@ static void render_review(void) {
     format_delta(s_delta, sizeof(s_delta), seconds_remaining());
     snprintf(s_review, sizeof(s_review), "%s%s%s%s%s\n%s%s%s",
              s_notice, s_notice[0] ? "\n\n" : "", separate_title ? "" : s_title,
-             separate_title ? "" : "\n", s_when,
+             separate_title ? "" : "\n", when,
              s_delta, s_pending ?
              "\nInsertion requested. Check Timeline; delivery NOT verified. Do not retry a removed pin." : "",
              s_wait_visible ? "\nWaiting for phone..." : (s_pending ?
@@ -289,7 +302,6 @@ static void render_review(void) {
              s_busy ? "" : (s_reload_required ?
              "\n\nSelect: reload saved state\nBack: exit" : "\n\nSelect: record again\nBack: record again"));
   }
-  GSize bounds = layer_get_bounds(scroll_layer_get_layer(s_scroll)).size;
   text_layer_set_text(s_review_title, separate_title ? s_title : "");
   int title_height = 0;
   if (separate_title) {
@@ -299,21 +311,24 @@ static void render_review(void) {
   }
   text_layer_set_size(s_review_title, GSize(bounds.w, title_height));
   int details_y = separate_title ? title_height + REVIEW_INSET : 0;
-  int details_safe_top = bounds.h / 5;
-  // Keep date/time and countdown together, away from the circular page edges.
-  if (separate_title &&
-      details_y % bounds.h + 2 * DETAILS_LINE_HEIGHT > bounds.h - details_safe_top) {
-    details_y = (details_y / bounds.h + 1) * bounds.h + details_safe_top;
-  }
-  // Balance the action-bar gutter so short details share the round face's center.
-  int details_x = separate_title ?
-    layer_get_bounds(window_get_root_layer(s_review_window)).size.w - bounds.w : 0;
+  int details_safe_top = PBL_IF_ROUND_ELSE(bounds.h / 5, REVIEW_INSET);
+  // Only the large round display has room to balance the action-bar gutter.
+  int details_x = separate_title && PBL_IF_ROUND_ELSE(screen_width >= 240, false) ?
+    screen_width - bounds.w : 0;
   int details_width = bounds.w - details_x;
   layer_set_frame(text_layer_get_layer(s_review_text), GRect(details_x, details_y, details_width, 2400));
   text_layer_enable_screen_text_flow_and_paging(s_review_text, REVIEW_INSET);
   text_layer_set_text(s_review_text, s_review);
   GSize size = text_layer_get_content_size(s_review_text);
-  // Keep the final circular page aligned instead of clamping its last line to the rim.
+  if (separate_title && size.h + 4 <= bounds.h - 2 * details_safe_top &&
+      details_y % bounds.h + size.h + 4 > bounds.h - details_safe_top) {
+    details_y = (details_y / bounds.h + 1) * bounds.h + details_safe_top;
+    layer_set_frame(text_layer_get_layer(s_review_text),
+                    GRect(details_x, details_y, details_width, 2400));
+    text_layer_enable_screen_text_flow_and_paging(s_review_text, REVIEW_INSET);
+    size = text_layer_get_content_size(s_review_text);
+  }
+  // Keep final pages aligned so the last line remains reachable on every shape.
   int height = ((details_y + size.h + 4 + bounds.h - 1) / bounds.h) * bounds.h;
   text_layer_set_size(s_review_text, GSize(details_width, height - details_y));
   scroll_layer_set_content_size(s_scroll, GSize(bounds.w, height));
@@ -321,21 +336,29 @@ static void render_review(void) {
 }
 
 static GBitmap *create_icon(int icon) {
+#ifdef PBL_COLOR
   static GColor palette[] = {GColorClear, GColorWhite};
+#endif
   static const uint16_t pixels[ICON_COUNT][16] = {
     {0, 0, 0, 0, 0x2000, 0x3000, 0x1800, 0x0c00, 0x0618, 0x0330, 0x01e0, 0x00c0},
     {0, 0, 0x0180, 0x03c0, 0x03c0, 0x03c0, 0x03c0, 0x03c0, 0x0990, 0x0810, 0x0420, 0x03c0, 0x0180, 0x07e0},
     {0, 0, 0x0fc0, 0x1fe0, 0x3070, 0x2038, 0x003c, 0x003e, 0, 0x2000, 0x3000, 0x180c, 0x0ff8, 0x07f0}
   };
-  GBitmap *bitmap = gbitmap_create_blank_with_palette(
+  GBitmap *bitmap;
+#ifdef PBL_COLOR
+  bitmap = gbitmap_create_blank_with_palette(
     GSize(16, 16), GBitmapFormat1BitPalette, palette, false);
+#else
+  bitmap = gbitmap_create_blank(GSize(16, 16), GBitmapFormat1Bit);
+#endif
   if (!bitmap) return NULL;
   uint8_t *data = gbitmap_get_data(bitmap);
   int stride = gbitmap_get_bytes_per_row(bitmap);
   memset(data, 0, stride * 16);
   for (int y = 0; y < 16; y++) {
     for (int x = 0; x < 16; x++) {
-      if (pixels[icon][y] & (1 << x)) data[y * stride + x / 8] |= 1 << (7 - x % 8);
+      if (pixels[icon][y] & (1 << x))
+        data[y * stride + x / 8] |= 1 << PBL_IF_COLOR_ELSE(7 - x % 8, x % 8);
     }
   }
   return bitmap;
@@ -368,8 +391,7 @@ static void review_load(Window *window) {
   }
   if (s_action_bar && icons_ready) {
     action_bar_layer_add_to_window(s_action_bar, window);
-    action_bar_layer_set_background_color(s_action_bar, GColorFromRGB(
-      ((s_ribbon_color >> 4) & 3) * 85, ((s_ribbon_color >> 2) & 3) * 85, (s_ribbon_color & 3) * 85));
+    action_bar_layer_set_background_color(s_action_bar, ribbon_color());
     action_bar_layer_set_icon_press_animation(s_action_bar, BUTTON_ID_SELECT, ActionBarLayerIconPressAnimationNone);
     action_bar_layer_set_click_config_provider(s_action_bar, review_clicks);
   } else {
@@ -497,8 +519,7 @@ static void apply_settings(DictionaryIterator *iterator) {
   }
   s_ribbon_color = color;
   s_auto_close = close == 1;
-  if (s_action_bar) action_bar_layer_set_background_color(s_action_bar, GColorFromRGB(
-    ((color >> 4) & 3) * 85, ((color >> 2) & 3) * 85, (color & 3) * 85));
+  if (s_action_bar) action_bar_layer_set_background_color(s_action_bar, ribbon_color());
 }
 
 static void receive(DictionaryIterator *iterator, void *context) {

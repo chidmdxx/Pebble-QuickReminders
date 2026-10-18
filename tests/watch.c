@@ -88,13 +88,20 @@ static void draft(void) {
   assert(s_can_confirm && s_reviewed && s_reviewing_reminder);
   assert(s_review_window->click_owner == s_action_bar);
   assert(s_action_bar->icons[BUTTON_ID_SELECT] == s_icons[ICON_CONFIRM]);
-  assert(s_action_bar->background_color == GColorDarkCandyAppleRed);
+  assert(s_action_bar->background_color == PBL_IF_COLOR_ELSE(GColorDarkCandyAppleRed, GColorBlack));
+#ifdef PBL_COLOR
   assert(s_icons[ICON_CONFIRM]->palette[0] == GColorClear &&
          s_icons[ICON_CONFIRM]->palette[1] == GColorWhite &&
          !s_icons[ICON_CONFIRM]->palette_owned);
   assert(s_icons[ICON_CONFIRM]->data[9] == 0x04 &&
          s_icons[ICON_CONFIRM]->data[20] == 0x07 &&
          s_icons[ICON_CONFIRM]->data[21] == 0x80);
+#else
+  assert(!s_icons[ICON_CONFIRM]->palette);
+  assert(s_icons[ICON_CONFIRM]->data[9] == 0x20 &&
+         s_icons[ICON_CONFIRM]->data[20] == 0xe0 &&
+         s_icons[ICON_CONFIRM]->data[21] == 0x01);
+#endif
   assert(!s_action_bar->icons[BUTTON_ID_UP] && !s_action_bar->icons[BUTTON_ID_DOWN]);
   assert(s_action_bar->static_icons[BUTTON_ID_SELECT]);
   assert(strstr(s_review, "In 20 min") && !strstr(s_review, "Select:"));
@@ -112,11 +119,16 @@ static void draft(void) {
   assert(s_review_title->screen_flow && s_review_title->flow_hierarchy_ready);
   assert(s_review_title->layer.bounds.size.h == fake_title_height + TITLE_DESCENDER_PAD);
   assert(s_review_text->layer.bounds.origin.y == fake_title_height + TITLE_DESCENDER_PAD + REVIEW_INSET);
-  assert(2 * s_review_text->layer.bounds.origin.x + s_review_text->layer.bounds.size.w ==
-         s_review_window->root.bounds.size.w);
+  if (PBL_IF_ROUND_ELSE(PBL_DISPLAY_WIDTH >= 240, false)) {
+    assert(2 * s_review_text->layer.bounds.origin.x + s_review_text->layer.bounds.size.w ==
+           s_review_window->root.bounds.size.w);
+  } else {
+    assert(s_review_text->layer.bounds.origin.x == 0);
+  }
   assert(s_review_text->layer.bounds.origin.x + s_review_text->layer.bounds.size.w ==
          s_scroll->layer.bounds.size.w);
-  assert(strstr(s_review, "2026-10-20 3:30 PM\nIn 20 min"));
+  assert(strstr(s_review, PBL_DISPLAY_WIDTH < 200 ?
+                "2026-10-20\n3:30 PM\nIn 20 min" : "2026-10-20 3:30 PM\nIn 20 min"));
   assert(s_scroll->paging && scroll_layer_get_content_size(s_scroll).h %
          s_scroll->layer.bounds.size.h == 0);
 }
@@ -206,7 +218,7 @@ int main(void) {
   draft();
   fake_title_height = 600;
   show_review();
-  assert(!s_reviewed && s_review_text->layer.bounds.origin.y == 600 + TITLE_DESCENDER_PAD + REVIEW_INSET);
+  assert(!s_reviewed && s_review_text->layer.bounds.origin.y >= 600 + TITLE_DESCENDER_PAD + REVIEW_INSET);
   int title_bottom = scroll_layer_get_content_size(s_scroll).h - s_scroll->layer.bounds.size.h;
   scroll_layer_set_content_offset(s_scroll, GPoint(0, -title_bottom + 1), false);
   assert(!s_reviewed);
@@ -217,9 +229,11 @@ int main(void) {
   // Date/time and countdown move together rather than splitting at the round rim.
   start();
   draft();
-  fake_title_height = 192;
+  fake_text_height = 72;
+  fake_title_height = PBL_DISPLAY_HEIGHT - TITLE_DESCENDER_PAD - REVIEW_INSET - 48;
   show_review();
-  assert(s_review_text->layer.bounds.origin.y == 264 + 264 / 5);
+  assert(s_review_text->layer.bounds.origin.y ==
+         PBL_DISPLAY_HEIGHT + PBL_IF_ROUND_ELSE(PBL_DISPLAY_HEIGHT / 5, REVIEW_INSET));
   assert(!s_reviewed);
   click(BUTTON_ID_DOWN);
   assert(s_reviewed);
@@ -367,7 +381,7 @@ int main(void) {
   assert(s_scroll->offset.y == -bottom);
   assert(s_reviewed);
   click(BUTTON_ID_UP);
-  assert(s_scroll->offset.y == 0);
+  assert(s_scroll->offset.y == -(bottom > PBL_DISPLAY_HEIGHT ? bottom - PBL_DISPLAY_HEIGHT : 0));
   click(BUTTON_ID_DOWN);
   assert(s_scroll->offset.y == -bottom);
   click(BUTTON_ID_SELECT);
@@ -431,17 +445,17 @@ int main(void) {
   sent = fake_sends;
   configuration(194, 0);
   assert(!s_busy && s_draft && s_reviewed && s_can_confirm && fake_sends == sent);
-  assert(s_action_bar->background_color == 194 && !s_auto_close);
+  assert(s_action_bar->background_color == PBL_IF_COLOR_ELSE(194, GColorBlack) && !s_auto_close);
   configuration(255, 1);
   configuration(224, 2);
   configuration(-1, 1);
-  assert(s_action_bar->background_color == 194 && !s_auto_close);
+  assert(s_action_bar->background_color == PBL_IF_COLOR_ELSE(194, GColorBlack) && !s_auto_close);
   click(BUTTON_ID_SELECT);
   AppTimer *insertion_timeout = s_timeout;
   int insertion_request = s_request;
   configuration(226, 0);
   assert(s_busy && s_timeout == insertion_timeout && s_request == insertion_request);
-  assert(s_action_bar->background_color == 226 && fake_sends == sent + 1);
+  assert(s_action_bar->background_color == PBL_IF_COLOR_ELSE(226, GColorBlack) && fake_sends == sent + 1);
   reply("pending", NULL, 1, 4);
   assert(s_alive && !s_busy && s_saved_notice && !s_reviewing_reminder);
   assert(strstr(s_review, "Check Timeline") && strstr(s_review, "delivery is not confirmed"));
@@ -453,7 +467,8 @@ int main(void) {
 
   // Cached preferences apply before phone readiness; Back exits the saved notice.
   start();
-  assert(s_ribbon_color == 226 && !s_auto_close && s_action_bar->background_color == 226);
+  assert(s_ribbon_color == 226 && !s_auto_close &&
+         s_action_bar->background_color == PBL_IF_COLOR_ELSE(226, GColorBlack));
   configuration(224, 0);
   draft();
   click(BUTTON_ID_SELECT);
@@ -494,7 +509,7 @@ int main(void) {
   DictionaryIterator ready_iterator = {ready_tuples, 6};
   receive(&ready_iterator, NULL);
   assert(!s_busy && s_dictating && s_ribbon_color == 194 && !s_auto_close);
-  assert(s_action_bar->background_color == 194 && fake_settings == 194);
+  assert(s_action_bar->background_color == PBL_IF_COLOR_ELSE(194, GColorBlack) && fake_settings == 194);
   finish();
   puts("Watch lifecycle, native cancellation, correlated replies, timers and review tests passed.");
   return 0;

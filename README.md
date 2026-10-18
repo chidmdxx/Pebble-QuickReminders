@@ -1,6 +1,23 @@
 # Pebble QuickReminders
 
-Private, timeline-only voice reminders for Pebble Round 2 (`gabbro`) and an Android phone running the official Pebble companion.
+Private, timeline-only voice reminders for microphone-equipped Pebble watches and an Android phone running the official Pebble companion.
+
+## Watch support
+
+One PBW includes all six microphone-capable SDK platforms:
+
+| Platform | Watches | Display |
+| --- | --- | --- |
+| `basalt` | Pebble Time, Pebble Time Steel | 144 by 168, color |
+| `chalk` | Pebble Time Round | 180 by 180, color, round |
+| `diorite` | Pebble 2 | 144 by 168, monochrome |
+| `emery` | Pebble Time 2 | 200 by 228, color |
+| `flint` | Pebble 2 Duo | 144 by 168, monochrome |
+| `gabbro` | Pebble Round 2 | 260 by 260, color, round |
+
+Original Pebble and Pebble Steel (`aplite`) have no microphone and are excluded; there is no non-voice input flow. Rectangular watches use the full text column beside the action bar. Smaller screens put the date and time on separate lines. Round watches retain contour-aware text and page-aligned scrolling. Monochrome watches use white icons on a black action bar regardless of the saved ribbon color; other settings are unchanged.
+
+Physical-device observations below apply to Round 2 only. Compilation and emulator checks do not establish speech recognition, Timeline synchronization or alert delivery on another watch model.
 
 **Development build; basic physical-device flow confirmed.** The user confirmed one Timeline pin and exactly one timely alert after returning to the watch face and disconnecting Bluetooth, and separately reported a mixed English/Spanish reminder working. With the native-action-bar and relative-time revision, the user also confirmed automatic return to the watch face, one pin and one timely alert with the app closed. A subsequent cosmetic update removed redundant draft instructions and added an original app-drawer icon; it was installed on the real watch. Those device observations predate the default-time and topic-continuation changes below and do not establish all speech models, recovery paths or timing conditions. Do not rely on this build for important reminders yet.
 
@@ -14,7 +31,7 @@ Private, timeline-only voice reminders for Pebble Round 2 (`gabbro`) and an Andr
 
 Canceling or failing dictation does not replace a saved record. Genuine speech errors, phone failures and timeouts stay visible in the same scrolling confirmation component. An uncertain phone response requires **Select: reload saved state** before another mutation; **Back** exits that recovery card. A recovered pending insertion shows the delivery caveat and offers explicit **Select: retry same pin** only after it has been read to the bottom. Back from that pending card records again without canceling or deleting the existing pin. The watch's navigation labels remain English; reminder titles retain their original language.
 
-The normal draft uses a bold Gothic24 reminder title above regular Gothic24 date/time and relative-time details, following Recordatorios's visual hierarchy without shrinking the readable details. The title reserves space for descenders such as `p` and `g`. Date and 12-hour time share one line (`2026-10-15 8:59 AM`), with the relative estimate centered below it on the round face rather than offset by the action bar. Midnight displays as `12:00 AM`; noon as `12:00 PM`. Both text blocks follow the round screen and share the same paged confirmation; no extra screen is introduced. Its deep-red right-hand action bar shows only a white confirmation checkmark; Up/Down still pages through long text without arrow icons. Icons use a transparent palette so no black box appears over the colored ribbon. Confirmation stays unchanged during a fast phone request; after 800 ms, a delayed request adds waiting feedback inline, not a separate status screen. Recovery and error guidance remain visible when needed. The app drawer uses an original 25-by-25-pixel bell-and-check icon.
+The normal draft uses a bold Gothic24 reminder title above regular Gothic24 date/time and relative-time details, following Recordatorios's visual hierarchy without shrinking the readable details. The title reserves space for descenders such as `p` and `g`. Round 2's date and 12-hour time share one line (`2026-10-15 8:59 AM`), with the relative estimate centered below it on the round face rather than offset by the action bar. Screens narrower than 200 pixels show date and time on separate lines. Midnight displays as `12:00 AM`; noon as `12:00 PM`. Both text blocks share the same paged confirmation; no extra screen is introduced. Its right-hand action bar shows only a white confirmation checkmark; Up/Down still pages through long text without arrow icons. Color-watch icons use a transparent palette so no black box appears over the colored ribbon; monochrome icons use the native one-bit format on black. Confirmation stays unchanged during a fast phone request; after 800 ms, a delayed request adds waiting feedback inline, not a separate status screen. Recovery and error guidance remain visible when needed. The app drawer uses an original 25-by-25-pixel bell-and-check icon.
 
 The relative estimate uses remaining seconds sampled from the phone, then elapsed time on the watch. It updates while reviewing: minutes round up, less than a minute displays **In <1 min**, and reached/passed times disable confirmation. Days/hours/minutes use `d`/`h`/`m`. Transport delay or watch-clock adjustments can affect the estimate; the absolute phone-derived instant is unchanged, and the phone revalidates it when confirming.
 
@@ -97,7 +114,7 @@ In the Pebble phone companion, open **Quick Reminders > Settings** (the gear ico
 | --- | --- | --- |
 | AM default time | 10:00 AM | Used for a named day with no clock, or tomorrow when today's PM default has passed. Accepts any AM hour and minute. |
 | PM default time | 8:00 PM | Used today when no day or time is spoken, if strictly ahead of the phone's local clock. At or after this minute, use tomorrow's AM default. Accepts any PM hour and minute. |
-| Ribbon color | Deep red | Deep red, dark blue, dark green, purple or black; the checkmark stays white. |
+| Ribbon color | Deep red | Deep red, dark blue, dark green, purple or black on color watches; monochrome watches always use black. The checkmark stays white. |
 | Auto-close after saving | On | Return to the watch face after a matching successful insertion response. When off, keep a saved notice with the delivery caveat, Select to record again and Back to exit. |
 
 Save applies the times to new dictation only. An existing draft or pin keeps its original instant; explicit spoken times, relative durations, mandatory confirmation and recovery safeguards do not change. Named-day defaults that have already passed and DST gaps or overlaps still require another time.
@@ -117,6 +134,8 @@ pebble build
 ```
 
 The output is `app\build\app.pbw`. Its UUID is distinct from Billy and Recordatorios, so it should install separately.
+
+GitHub Actions runs the contract tests, including the production-C lifecycle harness at each supported watch's screen size and capabilities, then builds all six SDK targets and checks the PBW contents. Download `quickreminders-all-watches` from a successful run's **Artifacts** section and unzip it to get the versioned package, such as `QuickReminders-0.3.0.pbw`. Artifacts are retained for 30 days. CI does not sign in to Pebble, install on a watch or publish to the app store.
 
 After changing AppMessage keys in `app\package.json`, run `pebble clean` before rebuilding; the SDK can otherwise retain a stale generated message-key header.
 
@@ -194,6 +213,8 @@ Optional Copilot-through-Actions parsing is **not implemented**. It remains gate
 `store\icon-80.png` and `store\icon-144.png` reuse the original bell-and-check menu icon on white backgrounds at the store's small and large icon sizes. They use integer nearest-neighbor scaling with centered padding to keep the pixel artwork sharp. The watch's 25-by-25 menu icon is unchanged.
 
 The optional store banner is 720 by 320 pixels. Round 2 screenshots must be 260 by 260 pixels, without a watch frame. Store submission and publication are separate from building or installing a PBW.
+
+`store\screenshots` contains native-resolution confirmation screenshots from the 0.3.0 emulators, using the English synthetic reminder **Buy milk** due in 20 minutes. Filenames start with the marketed watch name, not SDK codenames, so `Pebble Time 2 - confirmation.png` belongs in the Time 2 (`emery`) slot and `Pebble Round 2 - confirmation.png` belongs in the Round 2 (`gabbro`) slot. Time and Time Steel share the same `basalt` capture, provided under both model names. Screenshots have no watch frames, labels overlaid on the image or simulated Timeline-delivery claims.
 
 ## Sources and license
 

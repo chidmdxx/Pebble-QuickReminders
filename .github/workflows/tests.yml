@@ -1,4 +1,4 @@
-name: Local contract tests
+name: Tests and Pebble build
 
 on:
   push:
@@ -16,3 +16,47 @@ jobs:
         with:
           node-version: '22'
       - run: npm test
+
+  build:
+    needs: tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Install Pebble CLI and SDK
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pebble"
+          "$RUNNER_TEMP/pebble/bin/pip" install pebble-tool==5.0.40
+          echo "$RUNNER_TEMP/pebble/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/pebble/bin/pebble" sdk install 4.33.1
+      - name: Build every supported platform
+        working-directory: app
+        run: pebble build
+      - name: Verify bundled targets
+        run: |
+          python3 - <<'PY'
+          import json
+          import zipfile
+
+          with open('app/package.json') as file:
+              package = json.load(file)
+              targets = set(package['pebble']['targetPlatforms'])
+          with zipfile.ZipFile('app/build/app.pbw') as bundle:
+              binaries = {name.split('/')[0] for name in bundle.namelist()
+                          if name.endswith('/pebble-app.bin')}
+              assert binaries == targets, (binaries, targets)
+              assert 'pebble-js-app.js' in bundle.namelist()
+              assert json.loads(bundle.read('appinfo.json'))['versionLabel'] == package['version']
+          PY
+      - name: Name release package
+        run: |
+          VERSION=$(node -p "require('./app/package.json').version")
+          cp app/build/app.pbw "app/build/QuickReminders-${VERSION}.pbw"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quickreminders-all-watches
+          path: app/build/QuickReminders-*.pbw
+          if-no-files-found: error
+          retention-days: 30
