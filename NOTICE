@@ -1,0 +1,16 @@
+Pebble QuickReminders
+
+Contains a narrow adaptation of app/src/pkjs/lib/reminders.js from:
+https://github.com/TomBolger/Billy
+Source revision: c949df4df3c2d28b6ad91dffd907a361d8b61b82
+Copyright 2025 Google LLC
+Licensed under the Apache License, Version 2.0; see LICENSE.
+
+Modified file: app/src/pkjs/lib/reminders.js
+Retains the generic timeline pin and reminder layout. Replaces immediate
+insertion, random identifiers and reminder-list storage with validated drafts,
+explicit confirmation, persistent recovery identity and local-pin insertion.
+Removes transcript logging and unrelated integrations.
+
+No upstream media assets, third-party dependencies or native Android source
+were imported. The watch UI, parser, controller and tests are new.
