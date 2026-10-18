@@ -61,6 +61,10 @@ Examples use synthetic reminder text:
 - `Buy milk tomorrow at 3 PM`
 - `Mañana a las 8 de la noche, recuérdame comprar pan`
 - `Tomorrow at 8 PM, remind me to buy bread`
+- `Mañana recuérdame comprar leche` (the AM default tomorrow)
+- `Monday remind me to buy milk` (the AM default on Monday)
+- `Mañana en la tarde recuérdame comprar leche` (the PM default tomorrow)
+- `Tomorrow afternoon remind me to buy milk` (the PM default tomorrow)
 - `Buy milk on friday at 15:30`
 - `Buy milk 2026-10-20 at 15:30` (replace with a future date)
 - `At 10 am remind me about the practice equipment`
@@ -94,15 +98,15 @@ Without AM/PM or a day period, hours 1-12 use the next future AM or PM occurrenc
 
 When time is omitted, the factory defaults are shown below. The AM and PM times can be changed in companion settings:
 
-- **Named day:** 10 AM on that day. `Tomorrow` and standalone `mañana` mean the next day; `today/hoy`, weekdays and ISO dates use their specified day.
+- **Named day:** 10 AM on that day. A leading morning modifier also uses the AM default; a leading afternoon, evening or night modifier uses the PM default (initially 8 PM) on that day. `Tomorrow` and standalone `mañana` mean the next day; `today/hoy`, weekdays and ISO dates use their specified day.
 - **No day or time:** 8 PM today if the phone's local time is before 8 PM; at or after 8 PM, 10 AM tomorrow.
 - **Clock supplied:** resolve it using its explicit period, unambiguous 24-hour value, or the next-AM/PM rule above. Invalid or unsupported times are rejected rather than replaced by a default.
 
-The selected default appears as an exact date/time and relative estimate and still needs confirmation. It is fixed when the phone receives the request; waiting does not roll it to a later default. A named day's 10 AM that has already passed is rejected, not moved to another day. In `8 de la mañana`, `mañana` means **AM**, not tomorrow. Morning phrases such as `por la mañana` without a clear day/time need clarification rather than being treated as tomorrow.
+The selected default appears as an exact date/time and relative estimate and still needs confirmation. It is fixed when the phone receives the request; waiting does not roll it to a later default. A named-day default that has already passed is rejected, not moved to another day. With a leading named day, the optional reminder prompt is removed from the title: `mañana recuérdame comprar leche` becomes **comprar leche**, using tomorrow's AM default. `mañana en la tarde recuérdame comprar leche` uses tomorrow's configured PM default, even if that setting is later than the usual afternoon. English forms such as `Monday remind me to buy milk` and `Tomorrow afternoon remind me to buy milk` follow the same rules. In `8 de la mañana`, `mañana` means **AM**, not tomorrow. Morning phrases such as `por la mañana` without a named day or explicit clock still need clarification.
 
 Times accept numeric hours with optional minutes, supported clock words, explicit AM/PM, a day period such as `tres de la tarde` or `3:30 in the afternoon`, or noon. A bare weekday includes today; if neither AM nor PM remains in the future on that day, the request is rejected rather than moved to the following week. Relative expressions retain the original phone receipt time through confirmation and retries.
 
-Ambiguous or competing schedules, unsupported time expressions, recurrence, unsupported relative dates such as `next month` / `la próxima semana` / `el siguiente lunes`, invalid dates, explicit past times and dates more than 366 days away are rejected. Compound dates such as `pasado mañana` / `the day after tomorrow` need an explicit date; day-period-only requests such as `tomorrow afternoon` need a specific time. Redictate using the supported grammar; parse failures display the heard transcript on the watch without logging it. Titles are limited to 160 UTF-8 bytes; long titles are rejected, not silently shortened. DST gaps and repeated local wall times require another time. Changing the phone timezone invalidates an unsubmitted draft; dictate and review it again.
+Ambiguous or competing schedules, unsupported time expressions, recurrence, unsupported relative dates such as `next month` / `la próxima semana` / `el siguiente lunes`, invalid dates, explicit past times and dates more than 366 days away are rejected. Compound dates such as `pasado mañana` / `the day after tomorrow` need an explicit date. A leading named-day/period request uses the AM or PM default as described above and still needs a title. Redictate using the supported grammar; parse failures display the heard transcript on the watch without logging it. Titles are limited to 160 UTF-8 bytes; long titles are rejected, not silently shortened. DST gaps and repeated local wall times require another time. Changing the phone timezone invalidates an unsubmitted draft; dictate and review it again.
 
 This is deliberately not unrestricted natural-language recognition.
 
@@ -116,8 +120,8 @@ In the Pebble phone companion, open **Quick Reminders > Settings** (the gear ico
 
 | Setting | Initial value | Behavior |
 | --- | --- | --- |
-| AM default time | 10:00 AM | Used for a named day with no clock, or tomorrow when today's PM default has passed. Accepts any AM hour and minute. |
-| PM default time | 8:00 PM | Used today when no day or time is spoken, if strictly ahead of the phone's local clock. At or after this minute, use tomorrow's AM default. Accepts any PM hour and minute. |
+| AM default time | 10:00 AM | Used for a named day with no clock, a leading morning request, or tomorrow when today's PM default has passed. Accepts any AM hour and minute. |
+| PM default time | 8:00 PM | Used for a leading afternoon/evening/night request on a named day. Also used today when no day or time is spoken, if strictly ahead of the phone's local clock; otherwise use tomorrow's AM default. Accepts any PM hour and minute. |
 | Ribbon color | Deep red | Deep red, dark blue, dark green, purple or black on color watches; monochrome watches always use black. The checkmark stays white. |
 | Auto-close after saving | On | Return to the watch face after a matching successful insertion response. When off, keep a saved notice with the delivery caveat, Select to record again and Back to exit. |
 

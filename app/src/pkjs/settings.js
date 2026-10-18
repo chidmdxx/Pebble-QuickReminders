@@ -54,10 +54,10 @@ function page(value, failed) {
     '<p id="error" role="alert">' + (failed ? 'Could not load or save settings. Check the values and try saving again.' : '') + '</p>' +
     '<form id="settings"><label for="am">AM default time</label>' +
     '<input id="am" type="time" min="00:00" max="11:59" step="60" required value="' + value.amTime + '">' +
-    '<small>Used when a day is named without a time, or tomorrow after the PM default has passed.</small>' +
+    '<small>Used when a day is named without a time, for a leading morning request, or tomorrow after the PM default has passed.</small>' +
     '<label for="pm">PM default time</label>' +
     '<input id="pm" type="time" min="12:00" max="23:59" step="60" required value="' + value.pmTime + '">' +
-    '<small>Used today when no day or time is spoken, if this time is still ahead.</small>' +
+    '<small>Used for a leading afternoon, evening or night request, or today when no day or time is spoken and this time is still ahead.</small>' +
     '<label for="ribbon">Ribbon color</label><select id="ribbon">' + options + '</select>' +
     '<small>Color watches only. Monochrome watches always use a black ribbon with white icons.</small>' +
     '<div id="preview">Reminder ribbon preview</div>' +

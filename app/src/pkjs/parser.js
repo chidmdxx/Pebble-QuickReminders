@@ -303,6 +303,8 @@ function parse(text, reference, settings) {
   var absolutePattern = new RegExp('^' + dayClause + ' ' + timeConnector + ' (.+?)' + topic, 'i');
   var reversedPattern = new RegExp('^' + timeConnector + ' (.+?) ' + dayClause + topic, 'i');
   var clockOnlyPattern = new RegExp('^' + timeConnector + ' (.+?)' + topic, 'i');
+  var firstDay = new RegExp('^' + dayClause + '(?:, *| )(.*)$', 'i').exec(input);
+  var dayPeriod = firstDay && /^(?:(?:in the )?(?:morning|afternoon|evening)|(?:at )?night|(?:en la|por la) (?:mañana|manana|tarde|noche))(?:, *| |$)/i.exec(firstDay[2]);
   var candidates = [];
   var leading = new RegExp('^(?:in|en|dentro de) (.+?) (' + unitPattern + ')(?: (.*))?$', 'i').exec(input);
   if (leading) {
@@ -383,19 +385,27 @@ function parse(text, reference, settings) {
   // then choosing a named day, or finally an entirely unscheduled title.
   var defaulted = false;
   if (!candidates.length) {
-    if (attemptedTime(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
-    var dayOnlyPattern = new RegExp('^' + dayClause + topic, 'i');
-    for (index = 0; index < input.length; index++) {
-      if (index && input.charAt(index - 1) !== ' ') continue;
-      what = input.slice(0, index).trim();
-      var dayOnly = dayOnlyPattern.exec(input.slice(index));
-      if (dayOnly && !morningContext(what)) {
-        candidates.push({ title: what, tail: dayOnly[2] || '', day: dayOnly[1].toLowerCase(), time: amTime });
-      }
+    if (firstDay) {
+      var remainder = firstDay[2];
+      if (dayPeriod) remainder = remainder.slice(dayPeriod[0].length);
+      candidates.push({
+        title: stripPrompt(remainder).replace(/^to(?: |$)/i, ''),
+        day: firstDay[1].toLowerCase(),
+        time: dayPeriod && /afternoon|evening|night|tarde|noche/i.test(dayPeriod[0]) ? pmTime : amTime,
+        leading: true
+      });
     }
     if (!candidates.length) {
-      var firstDay = new RegExp('^' + dayClause + ' (.+)$', 'i').exec(input);
-      if (firstDay) candidates.push({ title: firstDay[2], day: firstDay[1].toLowerCase(), time: amTime });
+      if (attemptedTime(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
+      var dayOnlyPattern = new RegExp('^' + dayClause + topic, 'i');
+      for (index = 0; index < input.length; index++) {
+        if (index && input.charAt(index - 1) !== ' ') continue;
+        what = input.slice(0, index).trim();
+        var dayOnly = dayOnlyPattern.exec(input.slice(index));
+        if (dayOnly && !morningContext(what)) {
+          candidates.push({ title: what, tail: dayOnly[2] || '', day: dayOnly[1].toLowerCase(), time: amTime });
+        }
+      }
     }
     if (!candidates.length) {
       if (containsDay(input) || competingSchedule(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
@@ -421,6 +431,10 @@ function parse(text, reference, settings) {
   });
   if (candidates.length !== 1) fail('Use one clear schedule, like "tomorrow at 8 AM".');
   var selected = candidates[0];
+  if (firstDay && !selected.leading && selected.title &&
+      (dayPeriod || stripPrompt(firstDay[2]) !== firstDay[2])) {
+    fail('Use one clear schedule, like "tomorrow at 8 AM".');
+  }
   if (selected.leading) {
     if (/^(?:to)?[.!?,;:]*$/i.test(selected.title)) fail('A reminder needs a title.');
     // A leading schedule must not turn modifiers or a second schedule into a title.

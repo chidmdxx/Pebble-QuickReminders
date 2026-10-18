@@ -479,7 +479,6 @@ test('invalid or conflicting time expressions never silently become defaulted re
     'Test tomorrow at 8 AM UTC about the test',
     'Test pasado mañana', 'Test pasado manana', 'Test the day after tomorrow',
     'Test pasado mañana a las 8 AM', 'Test the day after tomorrow at 8 AM',
-    'Mañana por la tarde revisar prueba', 'Tomorrow afternoon review the test',
     'Test mañana por la noche', 'Test tomorrow evening', 'Test in the morning',
     'Test yesterday', 'Test ayer', 'Test anteayer',
     'mañana', 'tomorrow', 'Recuérdame'
@@ -648,6 +647,76 @@ test('leading absolute schedules keep phone-local dates and DST gap and overlap 
     'Tomorrow at 1:30 AM, remind me to Test',
     'Mañana a la 1:30 de la mañana, recuérdame Test'
   ]) assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 31, 12)), /twice/, phrase);
+}));
+
+test('leading days strip reminder prompts and use configured AM or day-period PM defaults', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const settings of [undefined, custom]) {
+    const am = settings ? [9, 15] : [10, 0];
+    const pm = settings ? [18, 45] : [20, 0];
+    for (const [phrase, title, day, usePM = false] of [
+      ['mañana recuerdame comprar leche', 'comprar leche', 18],
+      ['Mañana, recuérdame comprar Café', 'comprar Café', 18],
+      ['Monday remind me to buy milk', 'buy milk', 19],
+      ['On Monday,remind me to buy milk', 'buy milk', 19],
+      ['El lunes recuérdame comprar leche', 'comprar leche', 19],
+      ['Tomorrow remember to Buy milk', 'Buy milk', 18],
+      ['mañana en la tarde recuerdame comprar leche', 'comprar leche', 18, true],
+      ['Mañana por la tarde, recuérdame comprar Café', 'comprar Café', 18, true],
+      ['Mañana por la tarde revisar prueba', 'revisar prueba', 18, true],
+      ['Tomorrow afternoon remind me to buy milk', 'buy milk', 18, true],
+      ['Tomorrow afternoon review the test', 'review the test', 18, true],
+      ['Monday in the afternoon, remind me to buy milk', 'buy milk', 19, true],
+      ['Tomorrow evening, remind me to buy milk', 'buy milk', 18, true],
+      ['Tomorrow night remind me to buy milk', 'buy milk', 18, true],
+      ['Mañana en la noche recuérdame comprar leche', 'comprar leche', 18, true],
+      ['Tomorrow morning remind me to buy milk', 'buy milk', 18],
+      ['Mañana en la mañana recuérdame comprar leche', 'comprar leche', 18]
+    ]) {
+      const time = usePM ? pm : am;
+      const instant = Date.UTC(2026, 9, day, time[0], time[1]);
+      const actual = parser.parse(phrase, reference, settings);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.instant, instant, phrase);
+      assert.equal(actual.reference, reference, phrase);
+    }
+  }
+  assert.equal(parser.parse('Tomorrow at 8 PM, remind me to Test', reference, custom).instant,
+    Date.UTC(2026, 9, 18, 20));
+  assert.equal(parser.parse('mañana a las 8 de la noche, recuérdame Test', reference, custom).instant,
+    Date.UTC(2026, 9, 18, 20));
+}));
+
+test('leading defaulted days reject missing titles, past defaults and competing schedules', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const phrase of [
+    'Monday remind me to', 'mañana recuérdame',
+    'Tomorrow afternoon remind me to', 'Mañana en la tarde recuérdame',
+    'Tomorrow afternoon remind me to Test in five minutes',
+    'Monday remind me to Test in five minutes',
+    'Mañana en la tarde recuérdame Test a las 8',
+    'Monday remind me to Test tomorrow',
+    'Tomorrow remind me to Test daily',
+    'Tomorrow morning remind me to Test at 25:00',
+    'Mañana en la tarde recuérdame Test a las 13 PM'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  assert.throws(() => parser.parse('Monday remind me to Test', Date.UTC(2026, 9, 19, 10)), /passed/);
+  assert.throws(() => parser.parse('Monday afternoon remind me to Test', Date.UTC(2026, 9, 19, 20)), /passed/);
+  assert.equal(parser.parse('Tomorrow morning remind me to Test', Date.UTC(2026, 11, 31, 23)).instant,
+    Date.UTC(2027, 0, 1, 10));
+}));
+
+test('leading defaulted morning periods retain DST gap and overlap rejection', () => zone('America/New_York', () => {
+  const settings = { amTime: '02:30', pmTime: '18:45', ribbonColor: 224, autoClose: true };
+  for (const phrase of [
+    'Tomorrow morning remind me to Test',
+    'Mañana en la mañana recuérdame Test'
+  ]) {
+    assert.throws(() => parser.parse(phrase, Date.UTC(2027, 2, 13, 12), settings), /gap/, phrase);
+    assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 31, 12),
+      { ...settings, amTime: '01:30' }), /twice/, phrase);
+  }
 }));
 
 test('next weekdays are strictly after today while this and bare weekdays still include today', () => zone('UTC', () => {

@@ -209,6 +209,45 @@ test('leading English and Spanish absolute reminders keep one reviewed instant a
   }
 });
 
+test('leading days choose saved AM or PM defaults without inserting before confirmation', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const reference = Date.UTC(2026, 9, 17, 12);
+    for (const [text, title, day, hour, minute, display] of [
+      ['mañana recuerdame comprar leche', 'comprar leche', 18, 9, 15, '2026-10-18 9:15 AM'],
+      ['Monday remind me to buy milk', 'buy milk', 19, 9, 15, '2026-10-19 9:15 AM'],
+      ['mañana en la tarde recuerdame comprar leche', 'comprar leche', 18, 18, 45, '2026-10-18 6:45 PM'],
+      ['Tomorrow afternoon remind me to buy milk', 'buy milk', 18, 18, 45, '2026-10-18 6:45 PM']
+    ]) {
+      const f = phone(undefined, () => reference);
+      f.storage.setItem('quickreminders.settings.v1', JSON.stringify({
+        amTime: '09:15', pmTime: '18:45', ribbonColor: 224, autoClose: true
+      }));
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: text } });
+      const draft = f.deliveries[0].payload;
+      const instant = Date.UTC(2026, 9, day, hour, minute);
+      assert.equal(draft.STATUS, 'draft', text);
+      assert.equal(draft.TITLE, title, text);
+      assert.equal(draft.WHEN, display, text);
+      assert.equal(draft.SECONDS_UNTIL, (instant - reference) / 1000, text);
+      assert.equal(draft.CAN_CONFIRM, 1, text);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[0].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].time, new Date(instant).toISOString());
+      assert.equal(f.pins[0].layout.title, title);
+      assert.equal(f.pins[0].reminders.length, 1);
+      assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      assert.deepEqual(f.logs, []);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('time-first bilingual reminders confirm exactly one pin and alert at captured reference plus five minutes', () => {
   const previous = process.env.TZ;
   process.env.TZ = 'UTC';
