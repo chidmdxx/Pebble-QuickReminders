@@ -574,6 +574,11 @@ test('leading absolute schedules accept bilingual reminder prompts and an option
     ['Tomorrow at 8 PM to Buy bread', 'Buy bread'],
     ['Tomorrow at 8 PM Buy bread', 'Buy bread'],
     ['Tomorrow at 8 PM, remind me about Café, pan y té!', 'Café, pan y té!'],
+    ['Tomorrow at 8 : 30, remind me to buy bread', 'buy bread', Date.UTC(2026, 9, 18, 8, 30)],
+    ['Tomorrow at 8 : 30 PM, remind me to buy bread: rye, not white!', 'buy bread: rye, not white!', Date.UTC(2026, 9, 18, 20, 30)],
+    ['Mañana a las 8 : 30 de la noche, recuérdame comprar pan: ¡integral!', 'comprar pan: ¡integral!', Date.UTC(2026, 9, 18, 20, 30)],
+    ['Tomorrow at 8 PM, remind me to PM: review notes', 'PM: review notes'],
+    ['Mañana a las 8 PM, recuérdame revisar PM: notas', 'revisar PM: notas'],
     ['mañana at 8 PM, remind me to Comprar pan', 'Comprar pan'],
     ['At 8 PM tomorrow, remind me to buy bread', 'buy bread'],
     ['A las 8 de la noche mañana, recuérdame comprar pan', 'comprar pan'],
@@ -593,6 +598,27 @@ test('leading absolute schedules accept bilingual reminder prompts and an option
   assert.equal(parser.parse(prefix + 'é'.repeat(80), reference).title, 'é'.repeat(80));
   assert.throws(() => parser.parse(prefix + 'é'.repeat(81), reference), /long/);
   assert.throws(() => parser.parse(prefix + '\ud800', reference), /invalid text/);
+}));
+
+test('leading clocks reject incomplete continuations instead of falling back to a shorter hour', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const phrase of [
+    'Tomorrow at 8 : 60, remind me to buy bread',
+    'Mañana a las 8 : 60, recuérdame comprar pan',
+    'Tomorrow at 8 : 3, remind me to buy bread',
+    'Mañana a las 8 : , recuérdame comprar pan',
+    'Tomorrow at 8 PM: remind me to buy bread',
+    'Mañana a las 8 PM: recuérdame comprar pan',
+    'Tomorrow at 8 p.m.: remind me to buy bread',
+    'Mañana a las 8 a.m.; recuérdame comprar pan',
+    'Tomorrow at 8 : 30 PM: remind me to buy bread',
+    'Mañana a las 8 : 30 de la noche: recuérdame comprar pan',
+    'Tomorrow at 8 in the evening: remind me to buy bread',
+    'Tomorrow at 8 PM : remind me to buy bread',
+    'At 8 : 60, remind me to buy bread',
+    'A las 8 PM: recuérdame comprar pan',
+    'At 8 PM tomorrow : remind me to buy bread'
+  ]) assert.throws(() => parser.parse(phrase, reference), /clear schedule/, phrase);
 }));
 
 test('leading absolute schedules retain missing-title, invalid-clock and competing-schedule rejection', () => zone('UTC', () => {

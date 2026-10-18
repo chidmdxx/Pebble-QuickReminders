@@ -372,14 +372,24 @@ function parse(text, reference, settings) {
         if (time) leadingDay = reversed[2].toLowerCase();
       }
       if (!time && clockOnly && !clockOnly[2]) time = clock(clockOnly[1]);
-      if (time) leadingSchedule = {
-        title: stripPrompt(input.slice(end).trim()).replace(/^to(?: |$)/i, ''),
-        day: leadingDay,
-        time: time,
-        leading: true
-      };
+      if (time) {
+        var leadingTitle = input.slice(end).trim();
+        leadingSchedule = {
+          title: stripPrompt(leadingTitle).replace(/^to(?: |$)/i, ''),
+          day: leadingDay,
+          time: time,
+          leading: true
+        };
+      }
     }
-    if (leadingSchedule) candidates.push(leadingSchedule);
+    if (leadingSchedule) {
+      // Check before stripping the prompt so punctuation inside a title stays intact.
+      // Malformed clock continuations must not fall back to a shorter valid hour.
+      if (/^:|^(?:[ap]\.?m\.?|de la (?:mañana|manana|tarde|noche)|in the (?:afternoon|evening)|at night)(?=$|[^a-záéíóúüñ0-9])/i.test(leadingTitle)) {
+        fail('Use one clear schedule, like "tomorrow at 8 AM".');
+      }
+      candidates.push(leadingSchedule);
+    }
   }
   // Explicit schedules win. Defaults apply only after ruling out attempted times,
   // then choosing a named day, or finally an entirely unscheduled title.

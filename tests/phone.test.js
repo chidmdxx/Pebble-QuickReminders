@@ -301,7 +301,13 @@ test('invalid leading schedules never expose confirmation or insert a pin', () =
     'recuerdame en cero minutos ver mensajes',
     'remind me in five minutes later to see message',
     'remind me in five minutes to see message tomorrow at 3 PM',
-    'recuerdame en cinco minutos ver mensajes en dos días'
+    'recuerdame en cinco minutos ver mensajes en dos días',
+    'Tomorrow at 8 : 60, remind me to buy bread',
+    'Mañana a las 8 : 60, recuérdame comprar pan',
+    'Tomorrow at 8 PM: remind me to buy bread',
+    'Mañana a las 8 PM: recuérdame comprar pan',
+    'Tomorrow at 8 : 30 PM: remind me to buy bread',
+    'Mañana a las 8 : 30 de la noche: recuérdame comprar pan'
   ]) {
     const f = phone();
     f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 19, TEXT: text } });
