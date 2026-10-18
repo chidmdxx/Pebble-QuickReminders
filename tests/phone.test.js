@@ -160,6 +160,55 @@ test('relative time uses the current phone clock, rounds fractions up and expire
   assert.equal(f.pins.length, 0);
 });
 
+test('leading English and Spanish absolute reminders keep one reviewed instant and require confirmation', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const reference = Date.UTC(2026, 9, 17, 12);
+    for (const [text, title] of [
+      ['mañana a las 8 de la noche, recuerdame comprar pan', 'comprar pan'],
+      ['Tomorrow at 8 PM, remind me to buy bread', 'buy bread'],
+      ['Tomorrow at 8 at night, remind me to buy bread', 'buy bread'],
+      ['Tomorrow at 8 in the evening, remind me to buy bread', 'buy bread']
+    ]) {
+      let now = reference;
+      const f = phone(undefined, () => now);
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 17, TEXT: text } });
+      const draft = f.deliveries[0].payload;
+      assert.equal(draft.STATUS, 'draft');
+      assert.equal(draft.TITLE, title);
+      assert.equal(draft.WHEN, '2026-10-18 8:00 PM');
+      assert.equal(draft.SECONDS_UNTIL, 32 * 3600);
+      assert.equal(draft.CAN_CONFIRM, 1);
+      assert.equal(draft.REQUEST_ID, 17);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[0].success();
+      now += 60000;
+      f.listeners.ready();
+      const restored = f.deliveries[1].payload;
+      assert.equal(restored.TOKEN, draft.TOKEN);
+      assert.equal(restored.WHEN, draft.WHEN);
+      assert.equal(restored.SECONDS_UNTIL, 32 * 3600 - 60);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[1].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN, REQUEST_ID: 18 } });
+      assert.equal(f.deliveries[2].payload.STATUS, 'pending');
+      assert.equal(f.deliveries[2].payload.REQUEST_ID, 18);
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].layout.title, title);
+      assert.equal(f.pins[0].time, '2026-10-18T20:00:00.000Z');
+      assert.equal(f.pins[0].reminders.length, 1);
+      assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      f.deliveries[2].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+      assert.equal(f.pins.length, 1);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('time-first bilingual reminders confirm exactly one pin and alert at captured reference plus five minutes', () => {
   const previous = process.env.TZ;
   process.env.TZ = 'UTC';

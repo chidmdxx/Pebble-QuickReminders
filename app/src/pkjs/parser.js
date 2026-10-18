@@ -75,7 +75,7 @@ function relativeInterval(count, unit) {
 function clock(value) {
   value = value.replace(/(\d) *: *(\d)/g, '$1:$2').replace(/([ap])\.m\.?$/i, '$1m');
   if (/^(?:noon|mediodía|mediodia)$/i.test(value)) return [12, 0];
-  var marker = / (am|pm|in the afternoon|de la mañana|de la manana|de la tarde|de la noche)$/i.exec(value);
+  var marker = / (am|pm|in the afternoon|in the evening|at night|de la mañana|de la manana|de la tarde|de la noche)$/i.exec(value);
   // Keep the original English grammar's optional space before AM/PM.
   if (!marker) marker = /(am|pm)$/i.exec(value);
   var meridiem = marker && marker[1].toLowerCase();
@@ -350,22 +350,34 @@ function parse(text, reference, settings) {
       if (time) candidates.push({ title: what, tail: clockOnly[2] || '', time: time });
     }
   }
-  // A leading clock is bounded by the longest complete supported clock phrase.
+  // Keep the longest complete leading schedule; a comma may separate its title.
   if (!candidates.some(function(candidate) { return !candidate.title; })) {
-    var firstClock = new RegExp('^' + timeConnector + ' (.+)$', 'i').exec(input);
-    if (firstClock) {
-      var words = firstClock[1].split(' ');
-      var leadingClock;
-      for (var end = 1; end < words.length; end++) {
-        time = clock(words.slice(0, end).join(' '));
-        if (time) leadingClock = {
-          title: stripPrompt(words.slice(end).join(' ')).replace(/^to(?: |$)/i, ''),
-          time: time,
-          leading: true
-        };
+    var leadingSchedule;
+    for (var end = 1; end <= input.length; end++) {
+      if (end < input.length && input.charAt(end - 1) !== ' ' && input.charAt(end - 1) !== ',') continue;
+      var prefix = input.slice(0, end).trim().replace(/,$/, '').trim();
+      absolute = absolutePattern.exec(prefix);
+      reversed = reversedPattern.exec(prefix);
+      clockOnly = clockOnlyPattern.exec(prefix);
+      time = null;
+      var leadingDay = null;
+      if (absolute && !absolute[3]) {
+        time = clock(absolute[2]);
+        if (time) leadingDay = absolute[1].toLowerCase();
       }
-      if (leadingClock) candidates.push(leadingClock);
+      if (!time && reversed && !reversed[3]) {
+        time = clock(reversed[1]);
+        if (time) leadingDay = reversed[2].toLowerCase();
+      }
+      if (!time && clockOnly && !clockOnly[2]) time = clock(clockOnly[1]);
+      if (time) leadingSchedule = {
+        title: stripPrompt(input.slice(end).trim()).replace(/^to(?: |$)/i, ''),
+        day: leadingDay,
+        time: time,
+        leading: true
+      };
     }
+    if (leadingSchedule) candidates.push(leadingSchedule);
   }
   // Explicit schedules win. Defaults apply only after ruling out attempted times,
   // then choosing a named day, or finally an entirely unscheduled title.
@@ -412,7 +424,7 @@ function parse(text, reference, settings) {
   if (selected.leading) {
     if (/^(?:to)?[.!?,;:]*$/i.test(selected.title)) fail('A reminder needs a title.');
     // A leading schedule must not turn modifiers or a second schedule into a title.
-    if (attemptedTime(selected.title) ||
+    if (attemptedTime(selected.title) || /^[ap]\.?m\.?(?=$|[ ,.?!])/i.test(selected.title) ||
         /^(?:more|later|from now|ago|before|after|and|or|más|mas|antes|después|despues|desde|y|o)(?=$|[ ,.?!])/i.test(selected.title)) {
       fail('Use one clear schedule, like "tomorrow at 8 AM".');
     }

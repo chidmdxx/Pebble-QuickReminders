@@ -59,6 +59,8 @@ Examples use synthetic reminder text:
 - `Revisar prueba` (the default described below)
 - `Buy milk today at 15:30`
 - `Buy milk tomorrow at 3 PM`
+- `Mañana a las 8 de la noche, recuérdame comprar pan`
+- `Tomorrow at 8 PM, remind me to buy bread`
 - `Buy milk on friday at 15:30`
 - `Buy milk 2026-10-20 at 15:30` (replace with a future date)
 - `At 10 am remind me about the practice equipment`
@@ -81,6 +83,8 @@ A leading `remind me to`, `remember to`, `recuérdame` or `recordar` is optional
 Relative reminders also accept the time first, followed by the reminder text: `en 5 minutos ver mensajes` or `in 5 minutes to see message`. A leading `remind me` is supported; the optional standalone `to` is grammar, while `to-do` remains part of a title. Both five-minute examples use the original phone reference plus exactly five minutes, not a default time or a later confirmation clock. An empty title, competing schedule or unsupported time modifier still needs clarification.
 
 An absolute day/time clause may precede a topic introduced by `about` or `sobre`. The topic stays in the title: the Spanish example above becomes **Enviar un mensaje sobre la prueba**, scheduled for tomorrow at **8:00 AM**. This is a bounded grammar extension, not arbitrary word-order interpretation.
+
+An absolute date/time clause can also come before the reminder title, with or without a separating comma. `Mañana a las 8 de la noche, recuérdame comprar pan` and `Tomorrow at 8 PM, remind me to buy bread` both select tomorrow at **8:00 PM**. English also accepts `8 at night` and `8 in the evening`, using the same conservative 8-11 / 20-23 hour bounds as `de la noche`. The leading schedule and optional reminder prompt are removed from the title; title spelling, accents and internal punctuation are preserved. Invalid clocks, competing schedules and DST gaps or overlaps still require another time.
 
 Clocks also work without a date, before the title (`At 10 AM remind me about the practice equipment`) or after it (`Review the test at 10 AM`). They use the next occurrence of that local time: today if still ahead, otherwise tomorrow. A date can follow the clock, as in `Review the test at 10 AM today`; an explicit `today` is never rolled to tomorrow. Dotted `a.m.` / `p.m.`, `noon` / `mediodía` and `3:30 in the afternoon` are supported. Spaces around a clock's colon, such as the emulator's synthetic `11: 59 PM` transcript, are accepted without changing punctuation in the title.
 

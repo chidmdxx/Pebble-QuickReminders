@@ -558,6 +558,98 @@ test('clock-first and day-after-clock phrases support dictation prefixes and kee
   ]) assert.equal(parser.parse(phrase, morning).instant, expected, phrase);
 }));
 
+test('leading absolute schedules accept bilingual reminder prompts and an optional comma', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12, 34, 56, 789);
+  for (const [phrase, title, instant = Date.UTC(2026, 9, 18, 20)] of [
+    ['mañana a las 8 de la noche, recuerdame comprar pan', 'comprar pan'],
+    ['Mañana a las ocho de la noche, recuérdame Comprar Café', 'Comprar Café'],
+    ['mañana a las 8 de la noche recuerdame comprar pan', 'comprar pan'],
+    ['mañana a las 8 de la noche,recuerdame comprar pan', 'comprar pan'],
+    ['Recuérdame mañana a las 8 de la noche, comprar pan', 'comprar pan'],
+    ['Tomorrow at 8 PM, remind me to buy bread', 'buy bread'],
+    ['Tomorrow at 8 at night, remind me to buy bread', 'buy bread'],
+    ['Tomorrow at eight in the evening, remind me to buy bread', 'buy bread'],
+    ['Tomorrow at eight PM remind me to Buy bread', 'Buy bread'],
+    ['TOMORROW AT 8PM,REMIND ME TO Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM, remember to Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM to Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM Buy bread', 'Buy bread'],
+    ['Tomorrow at 8 PM, remind me about Café, pan y té!', 'Café, pan y té!'],
+    ['mañana at 8 PM, remind me to Comprar pan', 'Comprar pan'],
+    ['At 8 PM tomorrow, remind me to buy bread', 'buy bread'],
+    ['A las 8 de la noche mañana, recuérdame comprar pan', 'comprar pan'],
+    ['Tomorrow at 8 PM, remind me to to-do list', 'to-do list'],
+    ['mañana a las 8 de la mañana, recuérdame comprar pan', 'comprar pan', Date.UTC(2026, 9, 18, 8)],
+    ['At 8 PM, remind me to Buy bread', 'Buy bread', Date.UTC(2026, 9, 17, 20)],
+    ['A las 8 de la noche, recuérdame comprar pan', 'comprar pan', Date.UTC(2026, 9, 17, 20)]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.instant, instant, phrase);
+    assert.equal(actual.reference, reference, phrase);
+    parser.validate(actual, reference + 60000);
+    assert.equal(actual.instant, instant, phrase);
+  }
+  const prefix = 'Tomorrow at 8 PM, remind me to ';
+  assert.equal(parser.parse(prefix + 'é'.repeat(80), reference).title, 'é'.repeat(80));
+  assert.throws(() => parser.parse(prefix + 'é'.repeat(81), reference), /long/);
+  assert.throws(() => parser.parse(prefix + '\ud800', reference), /invalid text/);
+}));
+
+test('leading absolute schedules retain missing-title, invalid-clock and competing-schedule rejection', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 17, 12);
+  for (const phrase of [
+    'Tomorrow at 8 PM, remind me to',
+    'Mañana a las 8 de la noche, recuérdame',
+    'Tomorrow at 8 PM,',
+    'Tomorrow at 8 PM, remind me to .',
+    'Tomorrow at 25:00, remind me to Test',
+    'Tomorrow at 13 PM, remind me to Test',
+    'Tomorrow at 13 p.m., remind me to Test',
+    'Mañana a las 7 de la noche, recuérdame Test',
+    'Mañana a las 13 de la noche, recuérdame Test',
+    'Tomorrow at 13 at night, remind me to Test',
+    'Tomorrow at 7 in the evening, remind me to Test',
+    'Tomorrow at 8 PM, remind me to Test at 9 PM',
+    'Tomorrow at 8 PM, remind me to Test tomorrow',
+    'Tomorrow at 8 PM, remind me to Test in five minutes',
+    'Tomorrow at 8 PM, remind me to Test tonight',
+    'Tomorrow at 8 PM, remind me to Test daily',
+    'Tomorrow at 8 PM, remind me to Test next month',
+    'mañana a las 8 de la noche, recuérdame Test a las 9 de la noche',
+    'mañana a las 8 de la noche, recuérdame Test en cinco minutos',
+    'Tomorrow at 8 PM, later remind me to Test'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+  for (const phrase of [
+    'Today at 8 PM, remind me to Test',
+    'Hoy a las 8 de la noche, recuérdame Test',
+    '2026-10-17 at 8 PM, remind me to Test'
+  ]) assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 17, 21)), /passed/, phrase);
+  assert.equal(parser.parse('Tomorrow at 8 PM, remind me to Test', Date.UTC(2026, 11, 31, 23)).instant,
+    Date.UTC(2027, 0, 1, 20));
+}));
+
+test('leading absolute schedules keep phone-local dates and DST gap and overlap protection', () => zone('America/New_York', () => {
+  for (const phrase of [
+    'Tomorrow at 8 PM, remind me to Test',
+    'Tomorrow at 8 at night, remind me to Test',
+    'Tomorrow at 8 in the evening, remind me to Test',
+    'Mañana a las 8 de la noche, recuérdame Test'
+  ]) {
+    const actual = parser.parse(phrase, Date.UTC(2026, 9, 17, 12));
+    assert.equal(actual.instant, Date.UTC(2026, 9, 19, 0), phrase);
+    assert.equal(parser.localDisplay(actual.instant), '2026-10-18 8:00 PM', phrase);
+  }
+  for (const phrase of [
+    'Tomorrow at 2:30 AM, remind me to Test',
+    'Mañana a las 2:30 de la mañana, recuérdame Test'
+  ]) assert.throws(() => parser.parse(phrase, Date.UTC(2027, 2, 13, 12)), /gap/, phrase);
+  for (const phrase of [
+    'Tomorrow at 1:30 AM, remind me to Test',
+    'Mañana a la 1:30 de la mañana, recuérdame Test'
+  ]) assert.throws(() => parser.parse(phrase, Date.UTC(2026, 9, 31, 12)), /twice/, phrase);
+}));
+
 test('next weekdays are strictly after today while this and bare weekdays still include today', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 14, 6);
   for (const day of ['next Wednesday', 'próximo miércoles', 'proximo miercoles', 'miércoles que viene']) {
