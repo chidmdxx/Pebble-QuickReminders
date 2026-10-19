@@ -20,6 +20,11 @@ Use synthetic reminder text in tests, screenshots, and bug reports. Never
 commit SDK profiles, tokens, private keys, real dictation, or device details.
 Follow [the security policy](SECURITY.md) for private vulnerability reports.
 
+PRs must pass the `secrets` check as well as the tests and build. The scanner
+checks Git history, so removing a credential in a follow-up commit is not
+enough. Revoke exposed credentials and contact the maintainer privately before
+requesting help with cleanup.
+
 External fork workflows wait for maintainer approval. Passing CI or an
 automated review is not permission to merge or publish. Copilot must not merge,
 publish, change access controls, or change repository visibility without an
