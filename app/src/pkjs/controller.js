@@ -16,9 +16,9 @@ function create(storage, pebble, clock) {
       record.value.zone !== parser.zoneContext(record.value.reference);
     var now = clock();
     var result = {
-      STATUS: record.state === 'draft' ? 'draft' : 'pending',
+      STATUS: record.state === 'open' ? 'schedule' : record.state === 'draft' ? 'draft' : 'pending',
       TOKEN: record.sequence,
-      CAN_CONFIRM: !changedZone && record.value.instant > now ? 1 : 0,
+      CAN_CONFIRM: record.state !== 'open' && !changedZone && record.value.instant > now ? 1 : 0,
       SECONDS_UNTIL: Math.max(0, Math.ceil((record.value.instant - now) / 1000)),
       TITLE: record.value.title,
       WHEN: parser.localDisplay(record.value.instant)
@@ -39,6 +39,33 @@ function create(storage, pebble, clock) {
     if (!message || typeof message.COMMAND !== 'string') parser.fail('Invalid app message.');
     var command = message.COMMAND;
     var record;
+    if (command.indexOf('pin_') === 0) {
+      var code = message.LAUNCH_CODE;
+      if (typeof code !== 'number' || Math.floor(code) !== code || code < 1 || code > 2147483646) {
+        parser.fail('Missing or invalid Timeline target.');
+      }
+      var result;
+      if (command === 'pin_open') result = view(store.open(code, message.TOKEN));
+      else if (command === 'pin_state') {
+        record = store.snapshot().edit;
+        if (!record || record.launchCode !== code) parser.fail('Timeline edit unavailable.');
+        result = view(record);
+      } else if (command === 'pin_preset' || command === 'pin_time') {
+        var configuration = preferences.read();
+        result = view(store.edit(code, message.TOKEN, function(title, reference) {
+          if (command === 'pin_time') return parser.parseTime(message.TEXT, reference, configuration, title);
+          if (typeof message.TEXT !== 'string' || !/^[0-2]$/.test(message.TEXT)) parser.fail('Choose a listed preset.');
+          return parser.draft(title, reference + configuration.snoozeMinutes[Number(message.TEXT)] * 60000, reference);
+        }));
+      } else if (command === 'pin_confirm') result = view(store.confirm(message.TOKEN, code));
+      else if (command === 'pin_retry') result = view(store.retry(message.TOKEN, code));
+      else if (command === 'pin_cancel') {
+        store.cancel(message.TOKEN, code);
+        result = { STATUS: 'home', TOKEN: 0 };
+      } else parser.fail('Unknown app command.');
+      result.LAUNCH_CODE = code;
+      return result;
+    }
     if (command === 'ready') return view(store.read());
     if (command === 'parse') return view(store.next(parser.parse(message.TEXT, clock(), preferences.read())));
     if (command === 'title') {

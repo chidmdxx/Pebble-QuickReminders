@@ -26,7 +26,8 @@ function create(storage) {
 
   function message() {
     var value = read();
-    return { RIBBON_COLOR: value.ribbonColor, AUTO_CLOSE: value.autoClose ? 1 : 0 };
+    return { RIBBON_COLOR: value.ribbonColor, AUTO_CLOSE: value.autoClose ? 1 : 0,
+      SNOOZE_1: value.snoozeMinutes[0], SNOOZE_2: value.snoozeMinutes[1], SNOOZE_3: value.snoozeMinutes[2] };
   }
 
   return { read: read, save: save, message: message };
@@ -58,6 +59,11 @@ function page(value, failed) {
     '<label for="pm">PM default time</label>' +
     '<input id="pm" type="time" min="12:00" max="23:59" step="60" required value="' + value.pmTime + '">' +
     '<small>Used for a leading afternoon, evening or night request, or today when no day or time is spoken and this time is still ahead.</small>' +
+    value.snoozeMinutes.map(function(minutes, index) {
+      return '<label for="snooze' + index + '">Timeline preset ' + (index + 1) + ' (minutes)</label>' +
+        '<input id="snooze' + index + '" type="number" min="1" max="10080" step="1" required value="' + minutes + '">';
+    }).join('') +
+    '<small>Only the selected pin’s Snooze / change time action shows these presets.</small>' +
     '<label for="ribbon">Ribbon color</label><select id="ribbon">' + options + '</select>' +
     '<small>Color watches only. Monochrome watches always use a black ribbon with white icons.</small>' +
     '<div id="preview">Reminder ribbon preview</div>' +
@@ -72,7 +78,10 @@ function page(value, failed) {
     'el("ribbon").onchange=function(){var value=Number(this.value);colors.forEach(function(c){' +
     'if(c.value===value)el("preview").style.borderRightColor=c.hex;});};' +
     'el("settings").onsubmit=function(event){event.preventDefault();' +
-    'var value={amTime:el("am").value,pmTime:el("pm").value,ribbonColor:Number(el("ribbon").value),autoClose:el("close").checked};' +
+    'var value={amTime:el("am").value,pmTime:el("pm").value,ribbonColor:Number(el("ribbon").value),autoClose:el("close").checked,' +
+    'snoozeMinutes:[0,1,2].map(function(i){return Number(el("snooze"+i).value);})};' +
+    'if(!value.snoozeMinutes.every(function(n){return isFinite(n)&&Math.floor(n)===n&&n>=1&&n<=10080;})){' +
+    'el("error").textContent="Choose three presets of 1..10080 whole minutes.";return;}' +
     'if(!/^(0[0-9]|1[01]):[0-5][0-9]$/.test(value.amTime)||!/^(1[2-9]|2[0-3]):[0-5][0-9]$/.test(value.pmTime)){' +
     'el("error").textContent="Choose an AM time and a PM time.";return;}' +
     'window.location.href="pebblejs://close#"+encodeURIComponent(JSON.stringify(value));};' +
