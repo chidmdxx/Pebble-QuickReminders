@@ -276,7 +276,7 @@ function buildPin(record) {
       time: time,
       layout: { type: 'genericReminder', title: record.value.title, tinyIcon: 'system://images/NOTIFICATION_REMINDER' }
     }],
-    actions: [{ title: 'Snooze / change time', type: 'openWatchApp', launchCode: record.launchCode }]
+    actions: [{ title: 'Snooze', type: 'openWatchApp', launchCode: record.launchCode }]
   };
 }
 
