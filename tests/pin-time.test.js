@@ -204,6 +204,12 @@ test('already due older pins use fresh captured reference and configured presets
 test('atomic v1 migration seeds only submitted identities and never inserts or automatically retries', () => {
   for (const state of ['draft', 'confirmed', 'insertion-requested', 'canceled']) {
     const f = fixture();
+    const writes = [];
+    const originalWrite = f.storage.setItem;
+    f.storage.setItem = (key, value) => {
+      writes.push(key);
+      originalWrite(key, value);
+    };
     const value = parser.parse('Legacy synthetic in 20 minutes', f.clock());
     const record = { version: 1, sequence: 12, id: 'qr-legacy-12', state };
     if (state !== 'canceled') record.value = value;
@@ -213,11 +219,103 @@ test('atomic v1 migration seeds only submitted identities and never inserts or a
     assert.equal(saved.version, 2);
     assert.equal(saved.sequence, 12);
     assert.equal(saved.latest.id, record.id);
+    assert.equal(saved.latest.sequence, 12);
+    assert.equal(saved.latest.launchCode, 12);
+    assert.equal(saved.latest.state, state);
+    assert.deepEqual(saved.latest.value, record.value);
     assert.equal(saved.edit, null);
     assert.equal(saved.pins.length, /confirmed|insertion-requested/.test(state) ? 1 : 0);
+    if (saved.pins.length) {
+      assert.deepEqual(saved.pins[0], {
+        id: record.id, launchCode: 12, value, revision: 12, uncertain: true
+      });
+    }
+    assert.deepEqual(writes, ['quickreminders.pending.v1']);
+    const migratedRaw = f.data.get('quickreminders.pending.v1');
+    const reopened = controller.create(f.storage, f.pebble, f.clock);
+    const recovery = reopened.handle({ COMMAND: 'ready' });
+    assert.equal(recovery.STATUS, state === 'draft' ? 'draft' : state === 'canceled' ? 'home' : 'pending');
+    assert.equal(f.data.get('quickreminders.pending.v1'), migratedRaw);
+    assert.equal(writes.length, 1);
     assert.equal(f.pins.length, 0);
+    if (state !== 'canceled') {
+      reopened.handle({ COMMAND: state === 'draft' ? 'confirm' : 'retry', TOKEN: 12 });
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].id, record.id);
+      assert.equal(f.pins[0].time, new Date(value.instant).toISOString());
+      assert.equal(f.pins[0].actions[0].launchCode, 12);
+    }
     const next = f.send('parse', { TEXT: 'Following synthetic in 10 minutes' });
     assert.equal(next.TOKEN, 13);
+  }
+});
+
+test('v1 cancellation discards ignored leftover values and remains readable after migration', () => {
+  for (const value of [null, {}, 'ignored legacy value',
+    parser.parse('Canceled synthetic in 20 minutes', Date.UTC(2026, 9, 14, 12))]) {
+    const f = fixture();
+    const record = { version: 1, sequence: 12, id: 'qr-legacy-12', state: 'canceled', value };
+    f.data.set('quickreminders.pending.v1', JSON.stringify(record));
+    assert.equal(f.send('ready').STATUS, 'home');
+    const store = reminders.create(f.storage, f.pebble, f.clock);
+    assert.deepEqual(store.snapshot(), {
+      version: 2, sequence: 12, edit: null, pins: [],
+      latest: { sequence: 12, id: record.id, state: 'canceled', launchCode: 12 }
+    });
+    assert.equal(controller.create(f.storage, f.pebble, f.clock).handle({ COMMAND: 'ready' }).STATUS, 'home');
+    assert.equal(f.pins.length, 0);
+    assert.equal(f.send('parse', { TEXT: 'Following synthetic in 10 minutes' }).TOKEN, 13);
+  }
+});
+
+test('malformed v1 migrations never write and preserve the original raw bytes on repeated reads', () => {
+  const f = fixture();
+  const baseline = {
+    version: 1, sequence: 12, id: 'qr-legacy-12', state: 'draft',
+    value: parser.parse('Legacy synthetic in 20 minutes', f.clock())
+  };
+  let writes = 0;
+  f.storage.setItem = () => { writes++; };
+  for (const mutate of [
+    e => { e.sequence = -1; }, e => { e.sequence = 2147483647; }, e => { e.sequence = 1.5; },
+    e => { e.id = 'invalid'; }, e => { e.state = 'open'; },
+    e => { delete e.value; }, e => { e.value.zone = ''; },
+    e => { e.value.instant = e.value.reference; },
+    e => { e.value.instant = e.value.reference + 367 * 86400000; },
+    e => { e.state = 'confirmed'; e.value.title = ''; },
+    e => { e.state = 'insertion-requested'; e.value.reference = null; },
+    e => { e.state = 'canceled'; e.sequence = '12'; }
+  ]) {
+    const record = JSON.parse(JSON.stringify(baseline));
+    mutate(record);
+    const raw = ' \n' + JSON.stringify(record, null, 2) + '\n ';
+    f.data.set('quickreminders.pending.v1', raw);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.throws(() => reminders.create(f.storage, f.pebble, f.clock).snapshot());
+      assert.equal(f.data.get('quickreminders.pending.v1'), raw);
+      assert.equal(writes, 0);
+    }
+  }
+  assert.equal(f.pins.length, 0);
+});
+
+test('failed v1 migration persistence preserves legacy bytes and retries migration without replay', () => {
+  for (const state of ['draft', 'confirmed', 'insertion-requested', 'canceled']) {
+    const f = fixture();
+    const value = parser.parse('Legacy synthetic in 20 minutes', f.clock());
+    const raw = JSON.stringify({ version: 1, sequence: 12, id: 'qr-legacy-12', state, value }, null, 2);
+    f.data.set('quickreminders.pending.v1', raw);
+    const originalWrite = f.storage.setItem;
+    f.storage.setItem = () => { throw new Error('Synthetic migration storage failure'); };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.throws(() => f.send('ready'), /Synthetic migration storage failure/);
+      assert.equal(f.data.get('quickreminders.pending.v1'), raw);
+      assert.equal(f.pins.length, 0);
+    }
+    f.storage.setItem = originalWrite;
+    f.send('ready');
+    assert.equal(reminders.create(f.storage, f.pebble, f.clock).read().state, state);
+    assert.equal(f.pins.length, 0);
   }
 });
 

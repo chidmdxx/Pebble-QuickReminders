@@ -46,7 +46,7 @@ function create(storage, pebble, now) {
     if (raw === null || raw === undefined) {
       return { version: 2, sequence: 0, latest: null, edit: null, pins: [] };
     }
-    var envelope;
+    var envelope, migrated = false;
     try { envelope = JSON.parse(raw); } catch (error) { invalid(); }
     if (envelope && envelope.version === 1) {
       var legacy = envelope;
@@ -54,6 +54,8 @@ function create(storage, pebble, now) {
           ['draft', 'confirmed', 'insertion-requested', 'canceled'].indexOf(legacy.state) < 0 ||
           (legacy.state !== 'canceled' && !valueValid(legacy.value))) invalid();
       delete legacy.version;
+      // The v1 validator ignored canceled values; v2 stores only the cancellation.
+      if (legacy.state === 'canceled') delete legacy.value;
       legacy.sequence = Math.max(1, legacy.sequence);
       legacy.launchCode = Math.max(1, legacy.sequence);
       envelope = { version: 2, sequence: Math.max(1, legacy.sequence), latest: legacy, edit: null, pins: [] };
@@ -63,7 +65,7 @@ function create(storage, pebble, now) {
           revision: legacy.sequence, uncertain: true
         });
       }
-      save(envelope);
+      migrated = true;
     }
     if (!envelope || envelope.version !== 2 || !integer(envelope.sequence, 0) ||
         !Array.isArray(envelope.pins) || !Object.prototype.hasOwnProperty.call(envelope, 'latest') ||
@@ -105,6 +107,7 @@ function create(storage, pebble, now) {
     });
     if (envelope.latest && envelope.edit && envelope.latest.sequence === envelope.edit.sequence &&
         envelope.latest.id !== envelope.edit.id) invalid();
+    if (migrated) save(envelope);
     return envelope;
   }
 
