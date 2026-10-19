@@ -307,7 +307,9 @@ function draft(what, instant, reference) {
   };
 }
 
-function parse(text, reference, settings) {
+function parse(text, reference, settings, preservedTitle) {
+  var scheduleOnly = preservedTitle !== undefined;
+  if (scheduleOnly) preservedTitle = title(preservedTitle);
   settings = defaults.validate(settings === undefined ? defaults.initial : settings);
   var amTime = settings.amTime.split(':').map(Number);
   var pmTime = settings.pmTime.split(':').map(Number);
@@ -483,6 +485,7 @@ function parse(text, reference, settings) {
     }
     if (!candidates.length) {
       if (containsDay(input) || competingSchedule(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
+      if (scheduleOnly) fail('Speak only a supported date or time.');
       var now = new Date(reference);
       var nextDay = now.getHours() * 60 + now.getMinutes() >= pmTime[0] * 60 + pmTime[1];
       var defaultTime = nextDay ? amTime : pmTime;
@@ -511,7 +514,7 @@ function parse(text, reference, settings) {
     fail('Use one clear schedule, like "tomorrow at 8 AM".');
   }
   if (selected.leading) {
-    if (/^(?:to)?[.!?,;:]*$/i.test(selected.title)) fail('A reminder needs a title.');
+    if (!scheduleOnly && /^(?:to)?[.!?,;:]*$/i.test(selected.title)) fail('A reminder needs a title.');
     // A leading schedule must not turn modifiers or a second schedule into a title.
     if (attemptedTime(selected.title) ||
         /^(?:more|later|from now|ago|before|after|and|or|más|mas|antes|después|despues|desde|y|o)(?=$|[ ,.?!])/i.test(selected.title)) {
@@ -520,13 +523,14 @@ function parse(text, reference, settings) {
   }
   var tail = selected.tail || '';
   what = selected.title + (tail ? ' ' + tail : '');
+  if (scheduleOnly && what.trim()) fail('Speak only a supported date or time, without a title.');
   if (competingSchedule(selected.title) || competingSchedule(tail) || competingSchedule(what) ||
       (!selected.day && !selected.interval &&
         (attemptedTime(what) || /(?:^| )de la (?:mañana|manana)$/i.test(what))) ||
       (defaulted && (containsDay(selected.title) || containsDay(tail)))) {
     fail('Use one clear schedule, like "tomorrow at 8 AM".');
   }
-  if (selected.interval) return draft(selected.title, reference + selected.interval, reference);
+  if (selected.interval) return draft(scheduleOnly ? preservedTitle : selected.title, reference + selected.interval, reference);
   var local = new Date(reference);
   var day = selected.day;
   var y = local.getFullYear(), m = local.getMonth() + 1, d = local.getDate();
@@ -568,7 +572,7 @@ function parse(text, reference, settings) {
   if (selected.time[2] && instant <= reference) {
     instant = resolveWall([y, m, d, selected.time[0] + 12, selected.time[1]]);
   }
-  return draft(what, instant, reference);
+  return draft(scheduleOnly ? preservedTitle : what, instant, reference);
 }
 
 function validate(value, now, mode) {
@@ -598,6 +602,9 @@ function withTime(value, date, time, now) {
 
 module.exports = {
   parse: parse,
+  parseTime: function(text, reference, settings, preservedTitle) {
+    return parse(text, reference, settings, title(preservedTitle));
+  },
   draft: draft,
   validate: validate,
   withTime: withTime,

@@ -41,8 +41,11 @@ function receive(message) {
         'Could not save or insert. Reopen to check before retrying.'
     };
     try {
-      var saved = controller.handle({ COMMAND: 'ready' });
+      var timeline = message && typeof message.COMMAND === 'string' && message.COMMAND.indexOf('pin_') === 0;
+      var saved = controller.handle(timeline ?
+        { COMMAND: 'pin_state', LAUNCH_CODE: message.LAUNCH_CODE } : { COMMAND: 'ready' });
       saved.ERROR = response.ERROR;
+      if (timeline) saved.CAN_CONFIRM = 0;
       response = saved;
     } catch (restoreError) {
       console.error('QuickReminders: saved state unavailable.');
@@ -53,9 +56,15 @@ function receive(message) {
     var configuration = preferences.message();
     response.RIBBON_COLOR = configuration.RIBBON_COLOR;
     response.AUTO_CLOSE = configuration.AUTO_CLOSE;
+    response.SNOOZE_1 = configuration.SNOOZE_1;
+    response.SNOOZE_2 = configuration.SNOOZE_2;
+    response.SNOOZE_3 = configuration.SNOOZE_3;
   } catch (error) {
     console.error('QuickReminders: settings unavailable. Open Settings to recover.');
+    response.ERROR = 'Settings unavailable. Open Settings and save them again.';
+    response.CAN_CONFIRM = 0;
   }
+  if (message && typeof message.LAUNCH_CODE === 'number') response.LAUNCH_CODE = message.LAUNCH_CODE;
   response.COMMAND = message && typeof message.COMMAND === 'string' ? message.COMMAND : 'invalid';
   response.REQUEST_ID = message && typeof message.REQUEST_ID === 'number' ? message.REQUEST_ID : 0;
   queue.push({ payload: response, attempts: 0 });
@@ -91,7 +100,8 @@ Pebble.addEventListener('webviewclosed', function(event) {
   queue.push({ payload: {
     COMMAND: 'settings',
     RIBBON_COLOR: value.ribbonColor,
-    AUTO_CLOSE: value.autoClose ? 1 : 0
+    AUTO_CLOSE: value.autoClose ? 1 : 0,
+    SNOOZE_1: value.snoozeMinutes[0], SNOOZE_2: value.snoozeMinutes[1], SNOOZE_3: value.snoozeMinutes[2]
   }, attempts: 0 });
   flush();
 });

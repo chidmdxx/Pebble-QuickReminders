@@ -25,7 +25,7 @@ function zone(name, run) {
   }
 }
 
-const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 194, autoClose: false };
+const custom = { amTime: '09:15', pmTime: '18:45', ribbonColor: 194, autoClose: false, snoozeMinutes: [7, 15, 45] };
 
 test('settings persist independently, validate strictly, and recover only through an explicit save', () => {
   const data = storage();
@@ -36,14 +36,14 @@ test('settings persist independently, validate strictly, and recover only throug
   data.setItem('quickreminders.pending.v1', 'untouched reminder');
   preferences.save(custom);
   assert.deepEqual(settings.create(data).read(), custom);
-  assert.deepEqual(preferences.message(), { RIBBON_COLOR: 194, AUTO_CLOSE: 0 });
+  assert.deepEqual(preferences.message(), { RIBBON_COLOR: 194, AUTO_CLOSE: 0, SNOOZE_1: 7, SNOOZE_2: 15, SNOOZE_3: 45 });
   for (const invalid of [
     null, {}, { ...custom, amTime: '12:00' }, { ...custom, amTime: '9:15' },
     { ...custom, amTime: '09:60' }, { ...custom, pmTime: '11:59' },
     { ...custom, pmTime: '24:00' }, { ...custom, ribbonColor: 255 },
     { ...custom, ribbonColor: '194' }, { ...custom, autoClose: 0 }
   ]) {
-    assert.throws(() => preferences.save(invalid), /Choose an AM time/);
+    assert.throws(() => preferences.save(invalid), /Choose valid times/);
     assert.deepEqual(preferences.read(), custom);
   }
   assert.equal(data.getItem('quickreminders.pending.v1'), 'untouched reminder');
@@ -116,17 +116,25 @@ test('bundled settings page preloads values, previews colors, validates, saves a
   assert.doesNotMatch(html, /https?:|<input id="close" type="checkbox" checked/);
   const elements = {
     am: { value: '07:30' }, pm: { value: '21:15' }, ribbon: { value: '226' },
-    close: { checked: true }, settings: {}, error: {}, cancel: {}, preview: { style: {} }
+    close: { checked: true }, settings: {}, error: {}, cancel: {}, preview: { style: {} },
+    snooze0: { value: '7' }, snooze1: { value: '15' }, snooze2: { value: '45' }
   };
   const window = { location: { href: '' } };
   vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], {
     document: { getElementById: id => elements[id] }, window
   });
+
   elements.ribbon.onchange();
   assert.equal(elements.preview.style.borderRightColor, '#aa00aa');
   elements.settings.onsubmit({ preventDefault() {} });
   const saved = JSON.parse(decodeURIComponent(window.location.href.split('#')[1]));
-  assert.deepEqual(saved, { amTime: '07:30', pmTime: '21:15', ribbonColor: 226, autoClose: true });
+  assert.deepEqual(saved, { amTime: '07:30', pmTime: '21:15', ribbonColor: 226, autoClose: true, snoozeMinutes: [7, 15, 45] });
+  window.location.href = '';
+  elements.snooze1.value = '0.5';
+  elements.settings.onsubmit({ preventDefault() {} });
+  assert.equal(window.location.href, '');
+  assert.match(elements.error.textContent, /whole minutes/);
+  elements.snooze1.value = '15';
   window.location.href = '';
   elements.am.value = '19:00';
   elements.settings.onsubmit({ preventDefault() {} });
@@ -135,4 +143,15 @@ test('bundled settings page preloads values, previews colors, validates, saves a
   elements.cancel.onclick();
   assert.equal(window.location.href, 'pebblejs://close');
   assert.match(decodeURIComponent(settings.page(custom, true)), /Could not load or save settings/);
+});
+
+test('legacy stored settings default presets while a malformed present field stays visibly invalid', () => {
+  const data = storage(), preferences = settings.create(data);
+  const legacy = { amTime: '09:15', pmTime: '18:45', ribbonColor: 194, autoClose: false };
+  data.setItem('quickreminders.settings.v1', JSON.stringify(legacy));
+  assert.deepEqual(preferences.read(), { ...legacy, snoozeMinutes: [5, 10, 30] });
+  preferences.read().snoozeMinutes[0] = 99;
+  assert.equal(preferences.read().snoozeMinutes[0], 5);
+  data.setItem('quickreminders.settings.v1', JSON.stringify({ ...legacy, snoozeMinutes: null }));
+  assert.throws(() => preferences.read(), /presets/);
 });
