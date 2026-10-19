@@ -13,6 +13,15 @@ test('the PBW targets every microphone-capable platform, but not aplite', () => 
   assert.equal(app.version, require('../package.json').version);
 });
 
+test('Timeline protocol appends keys without changing existing wire identities', () => {
+  const keys = require('../app/package.json').pebble.messageKeys;
+  assert.deepEqual(keys, ['COMMAND', 'TEXT', 'TOKEN', 'TITLE', 'WHEN', 'STATUS', 'CAN_CONFIRM',
+    'ERROR', 'SECONDS_UNTIL', 'REQUEST_ID', 'RIBBON_COLOR', 'AUTO_CLOSE',
+    'LAUNCH_CODE', 'SNOOZE_1', 'SNOOZE_2', 'SNOOZE_3']);
+  const stub = fs.readFileSync(path.join(__dirname, 'watch-stub', 'pebble.h'), 'utf8');
+  keys.forEach((key, index) => assert.match(stub, new RegExp('#define MESSAGE_KEY_' + key + ' ' + (10000 + index) + '\\b')));
+});
+
 test('the app drawer uses one bundled 25-pixel PNG menu icon', () => {
   const app = require('../app/package.json');
   const icons = app.pebble.resources.media.filter(resource => resource.menuIcon === true);

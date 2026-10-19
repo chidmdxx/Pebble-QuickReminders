@@ -8,14 +8,14 @@ const controller = require('../app/src/pkjs/controller');
 
 function fixture() {
   let now = Date.UTC(2026, 9, 14, 12);
-  let raw = null;
+  const data = new Map();
   let failWrite = false;
   const pins = [];
   const storage = {
-    getItem: () => raw,
+    getItem: key => data.get(key) ?? null,
     setItem: (key, value) => {
       if (failWrite) throw new Error('disk failure');
-      raw = value;
+      data.set(key, value);
     }
   };
   const pebble = { insertTimelinePin: pin => pins.push(pin) };
@@ -25,7 +25,7 @@ function fixture() {
     store: reminders.create(storage, pebble, clock),
     app: controller.create(storage, pebble, clock),
     draft: () => parser.parse('Synthetic example in 20 minutes', now),
-    corrupt: value => { raw = value; },
+    corrupt: value => { data.set('quickreminders.pending.v1', value); },
     failWrite: () => { failWrite = true; },
     advance: milliseconds => { now += milliseconds; }
   };
@@ -46,7 +46,7 @@ test('draft/cancel/resume cause zero insertions; confirmation creates exactly on
   assert.equal(pin.time, pin.reminders[0].time);
   assert.equal(pin.layout.title, 'Synthetic example');
   assert.equal(pin.createNotification, undefined);
-  assert.equal(pin.actions, undefined);
+  assert.equal(pin.actions[0].type, 'openWatchApp');
   assert.ok(pin.id.length < 64);
   assert.equal(f.store.read().state, 'insertion-requested');
 });
