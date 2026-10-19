@@ -6,3 +6,14 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# Local SDK/authentication state must never be published.
+.pebble-sdk/
+.pebble/
+.sdk-profile/
+*.pem
+*.key
+*.p12
+*.pfx
+__pycache__/
+*.pyc
