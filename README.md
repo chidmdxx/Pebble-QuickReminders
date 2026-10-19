@@ -66,7 +66,7 @@ The package is `app/build/app.pbw`. For a physical watch, enable the companion's
 
 Run `pebble clean` before rebuilding after changing AppMessage keys in `app/package.json`. GitHub Actions runs the tests, builds all six supported SDK targets, and uploads the versioned PBW as `quickreminders-all-watches`.
 
-**[Download CI builds](https://github.com/chidmdxx/Pebble-QuickReminders/actions/workflows/tests.yml?query=branch%3Amain+is%3Asuccess):** open the latest successful `main` run, then download **quickreminders-all-watches** under **Artifacts** and unzip the PBW. Repository access and GitHub sign-in are required; artifacts expire after 30 days. Use `main` builds rather than unreviewed pull-request artifacts.
+**[Download CI builds](https://github.com/chidmdxx/Pebble-QuickReminders/actions/workflows/tests.yml?query=branch%3Amain+is%3Asuccess):** open the latest successful `main` run, then download **quickreminders-all-watches** under **Artifacts** and unzip the PBW. GitHub sign-in is required for Actions artifacts, even on a public repository; artifacts expire after 30 days. Use `main` builds rather than unreviewed pull-request artifacts.
 
 ## Project structure
 
@@ -94,6 +94,13 @@ The appended AppMessage keys are `LAUNCH_CODE` and `SNOOZE_1..3`. Only `APP_LAUN
 The app has no server, runtime account login, or transcript logging. Reminder text and recovery state are stored in the companion's local storage and sent to the watch as pins. Pebble handles speech recognition; cloud recognition may send audio to the selected provider.
 
 Automated tests cover parsing, settings, the phone protocol, and watch control flow. They do not prove speech recognition, screen layout, or Timeline delivery. Physical-device checks have covered the basic flow on Round 2, not every model or recovery case. Test changes with synthetic reminders and keep personal data out of issue reports.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull requests, and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting, maintainer access,
+release policy, and the security checklist. Only the owner merges changes and
+publishes releases; public visibility does not grant write access.
 
 ## License
 
