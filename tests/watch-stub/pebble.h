@@ -117,7 +117,12 @@ typedef struct {
   void (*callback)(int, void *);
 } SimpleMenuItem;
 typedef struct { const char *title; const SimpleMenuItem *items; uint32_t num_items; } SimpleMenuSection;
-typedef struct { Layer layer; int selected; const SimpleMenuSection *sections; } SimpleMenuLayer;
+typedef struct {
+  Layer layer;
+  int selected;
+  const SimpleMenuSection *sections;
+  GColor highlight_background, highlight_foreground;
+} SimpleMenuLayer;
 typedef SimpleMenuLayer MenuLayer;
 static int fake_launch_reason;
 static uint32_t fake_launch_args;
@@ -238,11 +243,17 @@ static SimpleMenuLayer *simple_menu_layer_create(GRect bounds, Window *w,
   SimpleMenuLayer *menu = calloc(1, sizeof(*menu));
   menu->layer.bounds = bounds;
   menu->sections = sections;
+  menu->highlight_background = GColorBlack;
+  menu->highlight_foreground = GColorWhite;
   return menu;
 }
 static void simple_menu_layer_destroy(SimpleMenuLayer *menu) { free(menu); }
 static Layer *simple_menu_layer_get_layer(const SimpleMenuLayer *menu) { return (Layer *)&menu->layer; }
 static MenuLayer *simple_menu_layer_get_menu_layer(SimpleMenuLayer *menu) { return menu; }
+static void menu_layer_set_highlight_colors(MenuLayer *menu, GColor background, GColor foreground) {
+  menu->highlight_background = background;
+  menu->highlight_foreground = foreground;
+}
 static int simple_menu_layer_get_selected_index(const SimpleMenuLayer *menu) { return menu->selected; }
 static void menu_layer_set_selected_next(MenuLayer *menu, bool up, int align, bool animated) {
   (void)align; (void)animated;
