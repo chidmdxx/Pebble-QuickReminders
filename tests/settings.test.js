@@ -114,8 +114,8 @@ test('bundled settings page preloads values, previews colors, validates, saves a
   assert.match(html, /value="18:45"/);
   assert.match(html, /value="194" selected/);
   for (let i = 1; i <= 3; i++) assert.match(html, new RegExp('Snooze preset ' + i + ' \\(minutes\\)'));
-  assert.match(html, /pin’s Snooze action/);
-  assert.doesNotMatch(html, /Timeline preset|Snooze \/ change time/);
+  assert.match(html, /pin’s Change time action/);
+  assert.doesNotMatch(html, /Timeline preset|pin’s Snooze action|Snooze \/ change time/);
   assert.doesNotMatch(html, /https?:|<input id="close" type="checkbox" checked/);
   const elements = {
     am: { value: '07:30' }, pm: { value: '21:15' }, ribbon: { value: '226' },
