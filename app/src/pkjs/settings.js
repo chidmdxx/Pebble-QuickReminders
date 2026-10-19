@@ -60,10 +60,10 @@ function page(value, failed) {
     '<input id="pm" type="time" min="12:00" max="23:59" step="60" required value="' + value.pmTime + '">' +
     '<small>Used for a leading afternoon, evening or night request, or today when no day or time is spoken and this time is still ahead.</small>' +
     value.snoozeMinutes.map(function(minutes, index) {
-      return '<label for="snooze' + index + '">Timeline preset ' + (index + 1) + ' (minutes)</label>' +
+      return '<label for="snooze' + index + '">Snooze preset ' + (index + 1) + ' (minutes)</label>' +
         '<input id="snooze' + index + '" type="number" min="1" max="10080" step="1" required value="' + minutes + '">';
     }).join('') +
-    '<small>Only the selected pin’s Snooze / change time action shows these presets.</small>' +
+    '<small>Only the selected pin’s Snooze action shows these presets.</small>' +
     '<label for="ribbon">Ribbon color</label><select id="ribbon">' + options + '</select>' +
     '<small>Color watches only. Monochrome watches always use a black ribbon with white icons.</small>' +
     '<div id="preview">Reminder ribbon preview</div>' +
