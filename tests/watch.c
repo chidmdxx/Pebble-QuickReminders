@@ -601,7 +601,9 @@ int main(void) {
   timeline_ready(0);
   assert(fake_sends == sent + 1 && !s_busy && s_schedule_menu && s_token == 21);
   assert(s_schedule_section.num_items == 4 && !s_schedule_section.title);
-  assert(!strcmp(s_schedule_items[0].title, "In 5 minutes"));
+  assert(!strcmp(s_schedule_items[0].title, "5 minutes"));
+  assert(!strcmp(s_schedule_items[1].title, "10 minutes"));
+  assert(!strcmp(s_schedule_items[2].title, "30 minutes"));
   for (int i = 0; i < 4; i++) assert(!s_schedule_items[i].subtitle);
   assert(!strcmp(s_schedule_items[3].title, "New time"));
   assert(s_schedule_menu->highlight_background == ribbon_color());
@@ -721,8 +723,8 @@ int main(void) {
   assert(!s_schedule_menu && s_reload_required && s_token == 71);
   click(BUTTON_ID_SELECT);
   reply("schedule", NULL, 71, 4);
-  assert(s_schedule_menu && !strcmp(s_schedule_items[0].title, "In 7 minutes") &&
-         !strcmp(s_schedule_items[2].title, "In 45 minutes"));
+  assert(s_schedule_menu && !strcmp(s_schedule_items[0].title, "7 minutes") &&
+         !strcmp(s_schedule_items[2].title, "45 minutes"));
   preset_configuration(0, 15, 45);
   assert(s_reload_required && !s_schedule_menu && s_presets[0] == 7);
   click(BUTTON_ID_BACK);
