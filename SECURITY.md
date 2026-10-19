@@ -32,8 +32,9 @@ GitHub rulesets, not this file or CODEOWNERS, enforce the following policy:
   CODEOWNERS requests the owner's review; it is not an authorization mechanism.
 - Only the owner can create tags. Existing tags cannot be updated or deleted.
 - Releases remain manual. Publish only a reviewed, successful `main` commit.
-  Inspect the PBW and release notes before publishing. Do not distribute PR
-  artifacts as trusted releases.
+  Attach and inspect the PBW in a draft before publishing: release immutability
+  locks the published assets and tag. Release titles and notes remain editable.
+  Do not distribute PR artifacts as trusted releases.
 
 GitHub has no separate release-publisher role on this personal repository:
 release access follows repository write/contents permissions. Tag protection
@@ -56,6 +57,8 @@ installed app with contents-write permissions is a separate trust decision.
   public PRs or run untrusted PR code in a privileged `pull_request_target` job.
 - Do not grant workflows `contents: write`, PR-approval permissions, publishing
   credentials, or broad secrets. Checkout credentials must not persist.
+  The repository's read-only token default is not a ceiling: a trusted workflow
+  can explicitly request write access. Review workflow changes accordingly.
 - Keep Dependabot alerts/security updates, private vulnerability reporting,
   secret scanning, and push protection enabled where supported. Review alerts;
   scanning is not proof that every secret or vulnerability has been found.
