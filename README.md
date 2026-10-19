@@ -12,6 +12,8 @@ Open the app to start dictation. Try:
 - `Recuérdame comprar leche mañana a las 3 PM`
 - `Tomorrow at 8 PM, remind me to buy bread`
 - `Call Sam dentro de cinco minutos`
+- `Recuérdame en media hora comprar leche`
+- `Remind me in half an hour to buy milk`
 - `Revisar la prueba mañana en la mañana`
 - `En la mañana revisar la prueba`
 
@@ -22,6 +24,8 @@ When you name a day without a time, the default is 10 AM. With no day or time, t
 Day periods use those defaults too: `mañana en la mañana` / `tomorrow morning` use AM, and `mañana por la noche` / `tomorrow evening` use PM. A leading period without a day, such as `En la mañana revisar la prueba`, uses the next future occurrence of that default time (today or tomorrow).
 
 The parser supports a bounded set of phrases, not unrestricted natural language. Recurring reminders, competing schedules, invalid dates, and ambiguous daylight-saving times require another phrase. Titles are limited to 160 UTF-8 bytes.
+
+`En media hora`, `in half an hour`, and `in half hour` mean exactly 30 minutes from dictation, whether they come before or after the title. Reviewing later does not move that time. Other fractional or compound intervals, such as `in 0.5 hours` or `en una y media horas`, remain unsupported.
 
 **Check Timeline after saving.** A successful insertion request does not confirm delivery to the watch. Recovery keeps the same pin ID and time; it never retries automatically. Do not retry a pin you have removed from Timeline.
 

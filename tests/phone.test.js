@@ -56,6 +56,83 @@ test('actual phone entrypoint serializes delivery and creates no pin before conf
   assert.deepEqual(f.logs, []);
 });
 
+test('half-hour phone drafts confirm one exact pin and alert without recomputing time', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const reference = Date.UTC(2026, 9, 14, 12);
+    for (const [text, title] of [
+      ['recuerdame en media hora comprar leche', 'comprar leche'],
+      ['remind me in half an hour to buy milk', 'buy milk'],
+      ['Recuérdame comprar Café dentro de media hora', 'comprar Café'],
+      ['Buy milk in half hour', 'Buy milk']
+    ]) {
+      let now = reference;
+      const f = phone(undefined, () => now);
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', REQUEST_ID: 17, TEXT: text } });
+      const draft = f.deliveries[0].payload;
+      assert.equal(draft.STATUS, 'draft', text);
+      assert.equal(draft.TITLE, title, text);
+      assert.equal(draft.WHEN, '2026-10-14 12:30 PM', text);
+      assert.equal(draft.CAN_CONFIRM, 1, text);
+      assert.equal(draft.SECONDS_UNTIL, 1800, text);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[0].success();
+      now += 10 * 60000;
+      f.listeners.ready();
+      assert.equal(f.deliveries[1].payload.TOKEN, draft.TOKEN);
+      assert.equal(f.deliveries[1].payload.WHEN, draft.WHEN);
+      assert.equal(f.deliveries[1].payload.SECONDS_UNTIL, 1200);
+      assert.equal(f.pins.length, 0);
+      f.deliveries[1].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].layout.title, title);
+      assert.equal(f.pins[0].time, '2026-10-14T12:30:00.000Z');
+      assert.equal(f.pins[0].reminders.length, 1);
+      assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      assert.deepEqual(f.logs, []);
+      f.deliveries[2].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: draft.TOKEN } });
+      assert.equal(f.pins.length, 1);
+      assert.doesNotMatch(f.logs.join(''), /leche|milk|Café|media|half/);
+    }
+    for (const text of [
+      'recuerdame en media horas comprar leche',
+      'remind me in half an hours to buy milk',
+      'en media hora 30 minutos comprar leche',
+      'in five minutes half an hour to buy milk',
+      'in half an hour a minute to buy milk',
+      'in half an hour an hour to buy milk'
+    ]) {
+      const f = phone(undefined, () => reference);
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: text } });
+      assert.equal(f.deliveries[0].payload.STATUS, 'home', text);
+      assert.ok(f.deliveries[0].payload.ERROR, text);
+      assert.notEqual(f.deliveries[0].payload.CAN_CONFIRM, 1, text);
+      f.deliveries[0].success();
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: 1 } });
+      assert.equal(f.pins.length, 0, text);
+      assert.doesNotMatch(f.logs.join(''), /leche|milk|media|half/);
+    }
+    const canceled = phone(undefined, () => reference);
+    canceled.listeners.appmessage({ payload: {
+      COMMAND: 'parse', TEXT: 'recuerdame en media hora comprar leche'
+    } });
+    const token = canceled.deliveries[0].payload.TOKEN;
+    canceled.deliveries[0].success();
+    canceled.listeners.appmessage({ payload: { COMMAND: 'cancel', TOKEN: token } });
+    assert.equal(canceled.deliveries[1].payload.STATUS, 'home');
+    canceled.deliveries[1].success();
+    canceled.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: token } });
+    assert.equal(canceled.pins.length, 0);
+    assert.doesNotMatch(canceled.logs.join(''), /leche|media/);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('leading and trailing day periods create one pin only after explicit confirmation', () => {
   const previous = process.env.TZ;
   process.env.TZ = 'UTC';
