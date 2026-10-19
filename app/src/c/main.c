@@ -827,7 +827,7 @@ static void schedule_unload(Window *window) {
 static void show_schedule(void) {
   if (!s_alive) return;
   for (int i = 0; i < 3; i++) {
-    snprintf(s_preset_labels[i], sizeof(s_preset_labels[i]), "In %ld minutes", (long)s_presets[i]);
+    snprintf(s_preset_labels[i], sizeof(s_preset_labels[i]), "%ld minutes", (long)s_presets[i]);
     s_schedule_items[i] = (SimpleMenuItem){
       .title = s_preset_labels[i], .callback = schedule_select
     };
