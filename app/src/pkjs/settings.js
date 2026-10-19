@@ -63,7 +63,7 @@ function page(value, failed) {
       return '<label for="snooze' + index + '">Snooze preset ' + (index + 1) + ' (minutes)</label>' +
         '<input id="snooze' + index + '" type="number" min="1" max="10080" step="1" required value="' + minutes + '">';
     }).join('') +
-    '<small>Only the selected pin’s Snooze action shows these presets.</small>' +
+    '<small>Only the selected pin’s Change time action shows these presets.</small>' +
     '<label for="ribbon">Ribbon color</label><select id="ribbon">' + options + '</select>' +
     '<small>Color watches only. Monochrome watches always use a black ribbon with white icons.</small>' +
     '<div id="preview">Reminder ribbon preview</div>' +

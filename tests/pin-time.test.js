@@ -30,7 +30,7 @@ test('Timeline selects older exact identity, previews then replaces same pin and
   const latest = f.send('ready');
   const code = older.actions[0].launchCode;
   assert.notEqual(code, newer.actions[0].launchCode);
-  assert.deepEqual(older.actions, [{ title: 'Snooze', type: 'openWatchApp', launchCode: code }]);
+  assert.deepEqual(older.actions, [{ title: 'Change time', type: 'openWatchApp', launchCode: code }]);
   let edit = f.send('pin_open', { LAUNCH_CODE: code });
   assert.equal(edit.STATUS, 'schedule');
   assert.equal(edit.TITLE, 'Older synthetic');
@@ -49,7 +49,7 @@ test('Timeline selects older exact identity, previews then replaces same pin and
   assert.equal(replaced.reminders.length, 1);
   assert.equal(replaced.reminders[0].time, replaced.time);
   assert.equal(replaced.actions[0].launchCode, code);
-  assert.equal(replaced.actions[0].title, 'Snooze');
+  assert.equal(replaced.actions[0].title, 'Change time');
   assert.throws(() => f.send('pin_confirm', { LAUNCH_CODE: code, TOKEN: edit.TOKEN }), /changed|submitted/);
   assert.throws(() => f.send('pin_preset', { LAUNCH_CODE: code, TOKEN: source, TEXT: '1' }), /changed/);
   assert.throws(() => f.send('pin_retry', { LAUNCH_CODE: newer.actions[0].launchCode, TOKEN: edit.TOKEN }), /matching|changed/);
