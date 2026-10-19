@@ -25,11 +25,13 @@ them or publish releases.
 GitHub rulesets, not this file or CODEOWNERS, enforce the following policy:
 
 - Only the owner can update `main`. All changes, including the owner's, require
-  a pull request, resolved review conversations, and successful `tests` and
-  `build` checks from GitHub Actions against the current base.
+  a squash-merged pull request, resolved review conversations, and successful `secrets`,
+  `tests`, and `build` checks from GitHub Actions against the current base.
 - Nobody bypasses those PR/CI requirements, force-pushes `main`, or deletes it.
   Required review approvals remain zero so a solo owner can merge their own PR.
   CODEOWNERS requests the owner's review; it is not an authorization mechanism.
+  Merge commits and rebase merges are disabled in repository settings and in
+  the main ruleset.
 - Only the owner can create tags. Existing tags cannot be updated or deleted.
 - Releases remain manual. Publish only a reviewed, successful `main` commit.
   Attach and inspect the PBW in a draft before publishing: release immutability
@@ -62,6 +64,17 @@ installed app with contents-write permissions is a separate trust decision.
 - Keep Dependabot alerts/security updates, private vulnerability reporting,
   secret scanning, and push protection enabled where supported. Review alerts;
   scanning is not proof that every secret or vulnerability has been found.
+- The required `secrets` job runs checksum-pinned Gitleaks on pushes and PRs,
+  including fork PRs after workflow approval. It scans fetched Git history, not
+  just the final diff, so deleting a secret in a later commit does not hide it.
+  Findings fail the check and log output redacts secret values. The job uses
+  built-in rules with an empty ignore file, ignoring PR-supplied config,
+  fingerprints, and inline allow comments. Review any edits to the workflow
+  itself: like other PR-defined CI, it is not tamper-proof against workflow edits.
+  Gitleaks does not upload the repository to a scanning service. Dependabot
+  checks vulnerable dependencies and updates actions; it does not find secrets.
+  Update the pinned Gitleaks version and checksum together after reviewing its
+  release; Dependabot does not update this downloaded binary.
 - Use CodeQL for the phone's JavaScript. Default setup does not cover the C watch
   app; its native harness and compiler checks are complementary, not a C
   security scan. Review the pinned Pebble CLI/SDK and their transitive Python
