@@ -36,6 +36,197 @@ function phone(customController, clock) {
   return { listeners, deliveries, logs, timers, pins, pebble, urls, storage };
 }
 
+test('Timeline timezone-error replay can cancel its exact draft and then open another pin', () => {
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'America/New_York';
+    const f = phone();
+    function exchange(COMMAND, extra) {
+      const index = f.deliveries.length;
+      f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+      const result = f.deliveries[index].payload;
+      f.deliveries[index].success();
+      return result;
+    }
+    const older = exchange('parse', { TEXT: 'Older synthetic in 20 minutes' });
+    exchange('confirm', { TOKEN: older.TOKEN });
+    const newer = exchange('parse', { TEXT: 'Newer synthetic in 30 minutes' });
+    exchange('confirm', { TOKEN: newer.TOKEN });
+    const code = f.pins[0].actions[0].launchCode, other = f.pins[1].actions[0].launchCode;
+    const open = exchange('pin_open', { LAUNCH_CODE: code });
+    const draft = exchange('pin_time', { LAUNCH_CODE: code, TOKEN: open.TOKEN, TEXT: 'tomorrow at 8 PM' });
+    process.env.TZ = 'Europe/Paris';
+    for (let replay = 0; replay < 2; replay++) {
+      const error = exchange('pin_open', { LAUNCH_CODE: code, TOKEN: draft.TOKEN });
+      assert.equal(error.STATUS, 'draft');
+      assert.equal(error.CAN_CONFIRM, 0);
+      assert.equal(error.TOKEN, draft.TOKEN);
+      assert.equal(error.LAUNCH_CODE, code);
+      assert.match(error.ERROR, /timezone/);
+    }
+    const blocked = exchange('pin_open', { LAUNCH_CODE: other });
+    assert.equal(blocked.STATUS, 'error');
+    assert.match(blocked.ERROR, /Another Timeline edit/);
+    const canceled = exchange('pin_cancel', { LAUNCH_CODE: code, TOKEN: draft.TOKEN });
+    assert.equal(canceled.STATUS, 'home');
+    assert.equal(canceled.TOKEN, 0);
+    assert.equal(canceled.LAUNCH_CODE, code);
+    assert.equal(JSON.parse(f.storage.getItem('quickreminders.pending.v1')).edit, null);
+    const switched = exchange('pin_open', { LAUNCH_CODE: other });
+    assert.equal(switched.STATUS, 'schedule');
+    assert.equal(switched.TITLE, 'Newer synthetic');
+    assert.equal(switched.LAUNCH_CODE, other);
+    assert.equal(f.pins.length, 2);
+    assert.doesNotMatch(f.logs.join(''), /Older|Newer|synthetic/);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+test('Timeline cancellation failure recovers exact open edit; pending uncertain edits cannot be canceled', () => {
+  for (const submitted of [false, true]) {
+    const f = phone();
+    function exchange(COMMAND, extra) {
+      const index = f.deliveries.length;
+      f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+      const result = f.deliveries[index].payload;
+      f.deliveries[index].success();
+      return result;
+    }
+    const draft = exchange('parse', { TEXT: 'Older synthetic in 20 minutes' });
+    exchange('confirm', { TOKEN: draft.TOKEN });
+    const newer = exchange('parse', { TEXT: 'Newer synthetic in 30 minutes' });
+    exchange('confirm', { TOKEN: newer.TOKEN });
+    const code = f.pins[0].actions[0].launchCode, other = f.pins[1].actions[0].launchCode;
+    let edit = exchange('pin_open', { LAUNCH_CODE: code });
+    const write = f.storage.setItem;
+    if (submitted) {
+      edit = exchange('pin_preset', { LAUNCH_CODE: code, TOKEN: edit.TOKEN, TEXT: '0' });
+      f.pebble.insertTimelinePin = () => { throw new Error('Private synthetic platform failure'); };
+      const error = exchange('pin_confirm', { LAUNCH_CODE: code, TOKEN: edit.TOKEN });
+      assert.equal(error.STATUS, 'pending');
+      assert.ok(error.ERROR);
+    } else {
+      f.storage.setItem = () => { throw new Error('Private synthetic storage failure'); };
+    }
+    const failed = exchange('pin_cancel', { LAUNCH_CODE: code, TOKEN: edit.TOKEN });
+    assert.ok(failed.ERROR);
+    assert.notEqual(failed.STATUS, 'home');
+    assert.equal(failed.TOKEN, edit.TOKEN);
+    assert.equal(failed.LAUNCH_CODE, code);
+    assert.equal(failed.CAN_CONFIRM, 0);
+    f.storage.setItem = write;
+    const recovery = exchange('pin_open', { LAUNCH_CODE: code, TOKEN: edit.TOKEN });
+    assert.equal(recovery.STATUS, submitted ? 'pending' : 'schedule');
+    assert.equal(recovery.TOKEN, edit.TOKEN);
+    if (submitted) {
+      assert.equal(exchange('pin_open', { LAUNCH_CODE: other }).STATUS, 'error');
+      assert.equal(JSON.parse(f.storage.getItem('quickreminders.pending.v1')).edit.state, 'insertion-requested');
+    } else {
+      assert.equal(exchange('pin_cancel', { LAUNCH_CODE: code, TOKEN: edit.TOKEN }).STATUS, 'home');
+      assert.equal(exchange('pin_open', { LAUNCH_CODE: other }).STATUS, 'schedule');
+    }
+    assert.equal(f.pins.length, 2);
+    assert.doesNotMatch(f.logs.join(''), /Private|Older|Newer|synthetic/);
+  }
+});
+
+test('Timeline phone wire selects exact older pin, captures voice reference and replaces only after confirmation', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    let now = Date.UTC(2026, 9, 14, 12);
+    const f = phone(undefined, () => now);
+    let request = 0;
+    function exchange(COMMAND, extra) {
+      const index = f.deliveries.length;
+      f.listeners.appmessage({ payload: Object.assign({ COMMAND, REQUEST_ID: ++request }, extra) });
+      const result = f.deliveries[index].payload;
+      assert.equal(result.COMMAND, COMMAND);
+      assert.equal(result.REQUEST_ID, request);
+      f.deliveries[index].success();
+      return result;
+    }
+    const a = exchange('parse', { TEXT: 'Older synthetic in 20 minutes' });
+    exchange('confirm', { TOKEN: a.TOKEN });
+    const b = exchange('parse', { TEXT: 'Newer synthetic in 30 minutes' });
+    exchange('confirm', { TOKEN: b.TOKEN });
+    const code = f.pins[0].actions[0].launchCode;
+    // Initial unsolicited readiness is unrelated to the requested Timeline item.
+    f.listeners.ready();
+    assert.equal(f.deliveries.at(-1).payload.TITLE, 'Newer synthetic');
+    assert.equal(f.deliveries.at(-1).payload.REQUEST_ID, 0);
+    f.deliveries.at(-1).success();
+    let edit = exchange('pin_open', { LAUNCH_CODE: code, TOKEN: 0 });
+    assert.equal(edit.STATUS, 'schedule');
+    assert.equal(edit.TITLE, 'Older synthetic');
+    assert.equal(edit.LAUNCH_CODE, code);
+    assert.deepEqual([edit.SNOOZE_1, edit.SNOOZE_2, edit.SNOOZE_3], [5, 10, 30]);
+    edit = exchange('pin_time', { LAUNCH_CODE: code, TOKEN: edit.TOKEN, TEXT: 'en media hora' });
+    assert.equal(edit.STATUS, 'draft');
+    assert.equal(edit.TITLE, 'Older synthetic');
+    assert.equal(edit.WHEN, '2026-10-14 12:30 PM');
+    assert.equal(edit.CAN_CONFIRM, 1);
+    assert.equal(edit.SECONDS_UNTIL, 1800);
+    assert.equal(f.pins.length, 2);
+    now += 5 * 60000;
+    const pending = exchange('pin_confirm', { LAUNCH_CODE: code, TOKEN: edit.TOKEN });
+    assert.equal(pending.STATUS, 'pending');
+    assert.equal(pending.TOKEN, edit.TOKEN);
+    assert.equal(pending.LAUNCH_CODE, code);
+    assert.equal(f.pins.length, 3);
+    assert.equal(f.pins[2].id, f.pins[0].id);
+    assert.equal(f.pins[2].actions[0].launchCode, code);
+    assert.equal(f.pins[2].time, '2026-10-14T12:30:00.000Z');
+    assert.equal(f.pins[2].reminders.length, 1);
+    assert.equal(f.pins[2].reminders[0].time, f.pins[2].time);
+    assert.deepEqual(f.logs, []);
+    exchange('pin_confirm', { LAUNCH_CODE: code, TOKEN: edit.TOKEN });
+    assert.equal(f.pins.length, 3);
+    assert.doesNotMatch(f.logs.join(''), /Older|Newer|synthetic|media/);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+test('Timeline phone errors never recover latest, enable failed previews, insert on cancellation or expose payloads', () => {
+  const f = phone();
+  function exchange(COMMAND, extra) {
+    const index = f.deliveries.length;
+    f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+    const result = f.deliveries[index].payload;
+    f.deliveries[index].success();
+    return result;
+  }
+  const latest = exchange('parse', { TEXT: 'Unrelated private synthetic in 20 minutes' });
+  exchange('confirm', { TOKEN: latest.TOKEN });
+  const code = f.pins[0].actions[0].launchCode;
+  const open = exchange('pin_open', { LAUNCH_CODE: code });
+  for (const TEXT of ['in zero minutes', 'tomorrow at 8 PM extra title', 'ordinary title only']) {
+    const error = exchange('pin_time', { LAUNCH_CODE: code, TOKEN: open.TOKEN, TEXT });
+    assert.equal(error.STATUS, 'schedule');
+    assert.equal(error.LAUNCH_CODE, code);
+    assert.equal(error.CAN_CONFIRM, 0);
+    assert.ok(error.ERROR);
+    assert.equal(f.pins.length, 1);
+  }
+  for (const LAUNCH_CODE of [undefined, 0, code + 100]) {
+    const error = exchange('pin_open', { LAUNCH_CODE });
+    assert.equal(error.STATUS, 'error');
+    assert.equal(error.TITLE, undefined);
+    assert.equal(error.TOKEN, undefined);
+    assert.ok(error.ERROR);
+  }
+  const preview = exchange('pin_preset', { LAUNCH_CODE: code, TOKEN: open.TOKEN, TEXT: '2' });
+  exchange('pin_cancel', { LAUNCH_CODE: code, TOKEN: preview.TOKEN });
+  const error = exchange('pin_confirm', { LAUNCH_CODE: code, TOKEN: preview.TOKEN });
+  assert.notEqual(error.CAN_CONFIRM, 1);
+  assert.equal(f.pins.length, 1);
+  assert.doesNotMatch(f.logs.join(''), /private|synthetic|extra|ordinary/);
+});
+
 test('actual phone entrypoint serializes delivery and creates no pin before confirmation', () => {
   const f = phone();
   f.listeners.ready();
@@ -741,7 +932,7 @@ test('timezone travel keeps an unsubmitted draft recoverable but never confirmab
 test('companion settings save, synchronize with bounded delivery, and survive cancellation and invalid input', () => {
   const f = phone();
   const preferences = require('../app/src/pkjs/settings').create(f.storage);
-  const value = { amTime: '08:30', pmTime: '19:15', ribbonColor: 226, autoClose: false };
+  const value = { amTime: '08:30', pmTime: '19:15', ribbonColor: 226, autoClose: false, snoozeMinutes: [7, 15, 45] };
   f.listeners.showConfiguration();
   assert.match(f.urls[0], /^data:text\/html/);
   f.listeners.webviewclosed({ response: encodeURIComponent(JSON.stringify(value)) });
@@ -749,6 +940,8 @@ test('companion settings save, synchronize with bounded delivery, and survive ca
   assert.equal(f.deliveries[0].payload.COMMAND, 'settings');
   assert.equal(f.deliveries[0].payload.RIBBON_COLOR, 226);
   assert.equal(f.deliveries[0].payload.AUTO_CLOSE, 0);
+  assert.deepEqual([f.deliveries[0].payload.SNOOZE_1, f.deliveries[0].payload.SNOOZE_2,
+    f.deliveries[0].payload.SNOOZE_3], [7, 15, 45]);
   f.deliveries[0].success();
   for (const response of [undefined, '', 'CANCELLED']) f.listeners.webviewclosed({ response });
   assert.equal(f.deliveries.length, 1);

@@ -19,6 +19,12 @@
 #define MESSAGE_KEY_REQUEST_ID 10009
 #define MESSAGE_KEY_RIBBON_COLOR 10010
 #define MESSAGE_KEY_AUTO_CLOSE 10011
+#define MESSAGE_KEY_LAUNCH_CODE 10012
+#define MESSAGE_KEY_SNOOZE_1 10013
+#define MESSAGE_KEY_SNOOZE_2 10014
+#define MESSAGE_KEY_SNOOZE_3 10015
+#define APP_LAUNCH_TIMELINE_ACTION 3
+#define MenuRowAlignCenter 0
 #ifdef PBL_COLOR
 #define PBL_IF_COLOR_ELSE(color, bw) (color)
 #else
@@ -105,11 +111,25 @@ typedef union {
 } TupleValue;
 typedef struct { uint32_t key; uint8_t type; uint16_t length; TupleValue *value; } Tuple;
 typedef struct { Tuple *tuples; size_t count; } DictionaryIterator;
+typedef struct {
+  const char *title, *subtitle;
+  GBitmap *icon;
+  void (*callback)(int, void *);
+} SimpleMenuItem;
+typedef struct { const char *title; const SimpleMenuItem *items; uint32_t num_items; } SimpleMenuSection;
+typedef struct { Layer layer; int selected; const SimpleMenuSection *sections; } SimpleMenuLayer;
+typedef SimpleMenuLayer MenuLayer;
+static int fake_launch_reason;
+static uint32_t fake_launch_args;
+static int launch_reason(void) { return fake_launch_reason; }
+static uint32_t launch_get_args(void) { return fake_launch_args; }
 
 static Window *fake_stack[12];
 static int fake_depth, fake_dictation_starts, fake_sends, fake_text_height = 100;
 static int fake_title_height = 24;
 static char fake_command[20];
+static char fake_text[513];
+static int32_t fake_token, fake_launch_code;
 static DictionaryIterator fake_outbox;
 static time_t fake_now = 100000;
 static time_t fake_time(time_t *result) { if (result) *result = fake_now; return fake_now; }
@@ -209,6 +229,27 @@ static void window_long_click_subscribe(int b, int ms, void (*f)(ClickRecognizer
 static void window_raw_click_subscribe(int b, void (*d)(ClickRecognizerRef, void *), void (*u)(ClickRecognizerRef, void *), void *c) {
   (void)u; (void)c; fake_raw_down[b] = d;
 }
+static void window_set_click_config_provider_with_context(Window *w, void (*f)(void *), void *context) {
+  (void)w; f(context);
+}
+static SimpleMenuLayer *simple_menu_layer_create(GRect bounds, Window *w,
+    const SimpleMenuSection *sections, int32_t count, void *context) {
+  (void)w; (void)count; (void)context;
+  SimpleMenuLayer *menu = calloc(1, sizeof(*menu));
+  menu->layer.bounds = bounds;
+  menu->sections = sections;
+  return menu;
+}
+static void simple_menu_layer_destroy(SimpleMenuLayer *menu) { free(menu); }
+static Layer *simple_menu_layer_get_layer(const SimpleMenuLayer *menu) { return (Layer *)&menu->layer; }
+static MenuLayer *simple_menu_layer_get_menu_layer(SimpleMenuLayer *menu) { return menu; }
+static int simple_menu_layer_get_selected_index(const SimpleMenuLayer *menu) { return menu->selected; }
+static void menu_layer_set_selected_next(MenuLayer *menu, bool up, int align, bool animated) {
+  (void)align; (void)animated;
+  menu->selected += up ? -1 : 1;
+  if (menu->selected < 0) menu->selected = 0;
+  if (menu->selected > 3) menu->selected = 3;
+}
 static DictationSession *dictation_session_create(int n, void (*f)(DictationSession *, DictationSessionStatus, char *, void *), void *c) {
   (void)n; (void)f; (void)c; return calloc(1, sizeof(DictationSession));
 }
@@ -229,11 +270,21 @@ static void fake_fire(AppTimer *t) {
   t->active = false;
   t->callback(t->context);
 }
-static AppMessageResult app_message_outbox_begin(DictionaryIterator **d) { *d = &fake_outbox; return fake_begin_result; }
+static AppMessageResult app_message_outbox_begin(DictionaryIterator **d) {
+  *d = &fake_outbox;
+  fake_token = fake_launch_code = 0;
+  fake_text[0] = '\0';
+  return fake_begin_result;
+}
 static void dict_write_cstring(DictionaryIterator *d, uint32_t k, const char *s) {
   (void)d; if (k == MESSAGE_KEY_COMMAND) snprintf(fake_command, sizeof(fake_command), "%s", s);
+  if (k == MESSAGE_KEY_TEXT) snprintf(fake_text, sizeof(fake_text), "%s", s);
 }
-static void dict_write_int32(DictionaryIterator *d, uint32_t k, int32_t v) { (void)d; (void)k; (void)v; }
+static void dict_write_int32(DictionaryIterator *d, uint32_t k, int32_t v) {
+  (void)d;
+  if (k == MESSAGE_KEY_TOKEN) fake_token = v;
+  if (k == MESSAGE_KEY_LAUNCH_CODE) fake_launch_code = v;
+}
 static void dict_write_end(DictionaryIterator *d) { (void)d; }
 static AppMessageResult app_message_outbox_send(void) { fake_sends++; return fake_outbox_result; }
 static Tuple *dict_find(DictionaryIterator *d, uint32_t k) {

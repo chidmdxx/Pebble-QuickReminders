@@ -1,6 +1,6 @@
 {
   "name": "quickreminders",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "private": true,
   "author": "QuickReminders contributors",
   "license": "Apache-2.0",
@@ -25,7 +25,11 @@
       "SECONDS_UNTIL",
       "REQUEST_ID",
       "RIBBON_COLOR",
-      "AUTO_CLOSE"
+      "AUTO_CLOSE",
+      "LAUNCH_CODE",
+      "SNOOZE_1",
+      "SNOOZE_2",
+      "SNOOZE_3"
     ],
     "resources": {
       "media": [
