@@ -23,6 +23,53 @@ test('relative phrases use the captured reference, not the confirmation clock', 
   assert.throws(() => parser.validate(draft, draft.instant), /passed/);
 }));
 
+test('half-hour reminders preserve bilingual titles and the exact captured reference', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12, 34, 56, 789);
+  for (const [phrase, title] of [
+    ['recuerdame en media hora comprar leche', 'comprar leche'],
+    ['Recuérdame dentro de media hora comprar Café', 'comprar Café'],
+    ['remind me in half an hour to buy milk', 'buy milk'],
+    ['Remind me to buy milk in half an hour', 'buy milk'],
+    ['Buy milk in half hour!', 'Buy milk'],
+    ['Comprar leche en media hora.', 'Comprar leche'],
+    ['EN HALF AN HOUR Revisar Café', 'Revisar Café'],
+    ['in media hora to Check AM radio', 'Check AM radio'],
+    ['dentro de half hour to PM review', 'PM review'],
+    ['in half an hour to a minute of silence', 'a minute of silence'],
+    ['en media hora to 30 minutes of practice', '30 minutes of practice']
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.reference, reference, phrase);
+    assert.equal(actual.instant, Date.UTC(2026, 9, 14, 13, 4, 56, 789), phrase);
+    parser.validate(actual, Date.UTC(2026, 9, 14, 12, 44, 56, 789));
+    assert.equal(actual.instant, Date.UTC(2026, 9, 14, 13, 4, 56, 789), phrase);
+  }
+}));
+
+test('half-hour near misses and compound schedules never become default reminders', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const phrase of [
+    'recuerdame en media hora', 'remind me in half an hour to',
+    'en media hora .', 'in half hour to .',
+    'Test en media horas', 'Test en medio hora', 'Test en media minuto',
+    'Test in half an hours', 'Test in half a hour', 'Test in half minutes',
+    'Test in 0.5 hours', 'Test en 0,5 horas', 'Test in zero hours',
+    'Test en cero horas', 'Test in quarter hour',
+    'in half an hour thirty minutes to Test',
+    'en media hora 30 minutos Test', 'en media hora y cinco minutos Test',
+    'in five minutes half an hour to Test',
+    'en cinco minutos media hora Test',
+    'in five minutes half a day to Test',
+    'in half an hour a minute to buy milk',
+    'in half an hour an hour to buy milk',
+    'Test in half an hour and five minutes',
+    'Test en una y media horas', 'Test en media hora en cinco minutos',
+    'en media hora Test tomorrow', 'Test tomorrow en media hora',
+    'in half an hour to Test at three', 'Test at three in half an hour'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+}));
+
 test('leading relative clauses preserve original-language titles and the captured reference', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 14, 12, 34, 56, 789);
   for (const [phrase, title, minutes = 5] of [

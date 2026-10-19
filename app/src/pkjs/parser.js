@@ -68,6 +68,8 @@ function number(value) {
 }
 
 function relativeInterval(count, unit) {
+  if ((/^half(?: an)?$/i.test(count) && /^hour$/i.test(unit)) ||
+      (/^media$/i.test(count) && /^hora$/i.test(unit))) return 30 * MINUTE;
   count = /^(a|an)$/i.test(count) ? 1 : number(count);
   return count >= 1 && count <= 10080 ?
     count * (/^(hour|hora)/i.test(unit) ? 60 : 1) * MINUTE : NaN;
@@ -342,7 +344,8 @@ function parse(text, reference, settings) {
       // Check before removing "to": an explicit title marker separates a
       // numbered subject from an unsupported compound interval.
       if (continuation && (!isNaN(number(continuation[1])) ||
-          /^[-+]?\d+(?:[.,]\d+)?$/.test(continuation[1]))) {
+          /^[-+]?\d+(?:[.,]\d+)?$/.test(continuation[1]) ||
+          /^(?:a|an|half(?: an?)?|media)$/i.test(continuation[1]))) {
         fail('Use one clear schedule, like "tomorrow at 8 AM".');
       }
       candidates.push({
