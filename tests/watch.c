@@ -600,9 +600,12 @@ int main(void) {
   assert(!s_busy && s_schedule_menu && fake_depth == 2 && s_token == 21);
   timeline_ready(0);
   assert(fake_sends == sent + 1 && !s_busy && s_schedule_menu && s_token == 21);
-  assert(s_schedule_section.num_items == 4 && !strcmp(s_schedule_section.title, "Synthetic test"));
+  assert(s_schedule_section.num_items == 4 && !s_schedule_section.title);
   assert(!strcmp(s_schedule_items[0].title, "In 5 minutes"));
-  assert(!strcmp(s_schedule_items[3].title, "New time") && s_schedule_items[3].subtitle == s_when);
+  for (int i = 0; i < 4; i++) assert(!s_schedule_items[i].subtitle);
+  assert(!strcmp(s_schedule_items[3].title, "New time"));
+  assert(s_schedule_menu->highlight_background == ribbon_color());
+  assert(s_schedule_menu->highlight_foreground == GColorWhite);
   click(BUTTON_ID_DOWN);
   click(BUTTON_ID_SELECT);
   assert(!strcmp(fake_command, "pin_preset") && !strcmp(fake_text, "1") &&
@@ -650,6 +653,20 @@ int main(void) {
   reply("home", NULL, 0, 4);
   assert(!s_alive);
   finish();
+
+  for (int color = 0; color < 2; color++) {
+    start_timeline(73);
+    configuration(color ? 226 : 194, 1);
+    reply("schedule", NULL, 21, 4);
+    assert(s_schedule_menu->highlight_background ==
+           PBL_IF_COLOR_ELSE(color ? 226 : 194, GColorBlack));
+    for (int i = 0; i < 3; i++) click(BUTTON_ID_DOWN);
+    assert(simple_menu_layer_get_selected_index(s_schedule_menu) == 3);
+    assert(s_schedule_menu->highlight_background == ribbon_color());
+    click(BUTTON_ID_BACK);
+    reply("home", NULL, 0, 4);
+    finish();
+  }
 
   // Timeline timeout reloads only that pin, and Back during an in-flight preview exits.
   start_timeline(75);

@@ -812,6 +812,8 @@ static void schedule_load(Window *window) {
     s_reload_required = true;
     return;
   }
+  menu_layer_set_highlight_colors(simple_menu_layer_get_menu_layer(s_schedule_menu),
+    ribbon_color(), GColorWhite);
   layer_add_child(root, simple_menu_layer_get_layer(s_schedule_menu));
   window_set_click_config_provider_with_context(window, schedule_clicks, window);
 }
@@ -827,14 +829,14 @@ static void show_schedule(void) {
   for (int i = 0; i < 3; i++) {
     snprintf(s_preset_labels[i], sizeof(s_preset_labels[i]), "In %ld minutes", (long)s_presets[i]);
     s_schedule_items[i] = (SimpleMenuItem){
-      .title = s_preset_labels[i], .subtitle = s_when, .callback = schedule_select
+      .title = s_preset_labels[i], .callback = schedule_select
     };
   }
   s_schedule_items[3] = (SimpleMenuItem){
-    .title = "New time", .subtitle = s_when, .callback = schedule_select
+    .title = "New time", .callback = schedule_select
   };
   s_schedule_section = (SimpleMenuSection){
-    .title = s_title, .items = s_schedule_items, .num_items = 4
+    .items = s_schedule_items, .num_items = 4
   };
   if (!s_schedule_window) {
     s_schedule_window = window_create();

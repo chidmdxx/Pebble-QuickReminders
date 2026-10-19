@@ -31,9 +31,9 @@ The parser supports a bounded set of phrases, not unrestricted natural language.
 
 ### Change one reminder's time from Timeline
 
-Open a QuickReminders pin in Timeline and select **Snooze / change time**. This opens only that pin, not your latest reminder. There is no reminder picker, and this screen is not accessible from normal launch or the creation review.
+Open a QuickReminders pin in Timeline and select **Snooze**. This opens only that pin, not your latest reminder. There is no reminder picker, and this screen is not accessible from normal launch or the creation review.
 
-Use Up/Down and Select to choose **In 5 minutes**, **In 10 minutes**, **In 30 minutes**, or **New time** to dictate a schedule. Change the three presets in the companion settings to whole minutes from 1 through 10080. Existing settings without presets use fresh defaults of 5/10/30; a supplied invalid preset field must be corrected in Settings.
+Use Up/Down and Select to choose **In 5 minutes**, **In 10 minutes**, **In 30 minutes**, or **New time** to dictate a schedule. The menu omits the reminder heading and original-time subtitles; the full title and new time appear in the confirmation review. Selection uses the configured ribbon color on color watches, or black on monochrome watches. Change **Snooze preset 1** through **Snooze preset 3** in the companion settings to whole minutes from 1 through 10080. Existing settings without presets use fresh defaults of 5/10/30; a supplied invalid preset field must be corrected in Settings.
 
 Speak only a supported schedule, such as `in half an hour`, `en media hora`, `dentro de cinco minutos`, `tomorrow at 8 PM`, or `mañana a las tres PM`. A named day alone uses the configured AM default. An unscheduled phrase, an extra title, compound intervals, and invalid or ambiguous clock changes are rejected. The original title is preserved.
 
@@ -47,7 +47,7 @@ After a successful insertion call, the phone prunes hidden lookup entries **more
 
 ## Upgrade compatibility
 
-Version 0.4.0 automatically migrates valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Older app versions cannot read that format, so downgrading after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Snooze / change time** action automatically.
+Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Snooze** action automatically. Version 0.4.1 keeps the same storage format. Existing 0.4.0 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Snooze**.
 
 ## Build and install
 
