@@ -16,10 +16,13 @@ Open the app normally or through Quick Launch to start dictation immediately, wi
 - `Remind me in half an hour to buy milk`
 - `Revisar la prueba mañana en la mañana`
 - `En la mañana revisar la prueba`
+- `Recuerda a las 8:00 poner a lavar`
 
 Review the parsed date and time before confirming. Scroll to the bottom of long reminders to enable Select. Back from a draft discards it and starts dictation again; Back while recording exits.
 
 When you name a day without a time, the default is 10 AM. With no day or time, the default is 8 PM today, or 10 AM tomorrow if 8 PM has passed. A clock without AM/PM, such as `at 8:30`, uses the next future AM or PM occurrence. Change the AM/PM defaults, ribbon color, and auto-close behavior in the companion's **Quick Reminders > Settings**.
+
+`Recuerda a las 8:00 poner a lavar` keeps the title `poner a lavar` and uses today at 8 AM before 8 AM, or today at 8 PM after 8 AM but before 8 PM. At or after 8 PM it uses tomorrow at 8 AM.
 
 Day periods use those defaults too: `mañana en la mañana` / `tomorrow morning` use AM, and `mañana por la noche` / `tomorrow evening` use PM. A leading period without a day, such as `En la mañana revisar la prueba`, uses the next future occurrence of that default time (today or tomorrow).
 

@@ -23,6 +23,53 @@ test('relative phrases use the captured reference, not the confirmation clock', 
   assert.throws(() => parser.validate(draft, draft.instant), /passed/);
 }));
 
+test('Recuerda time-only reminders use today when the clock is still ahead', () => {
+  for (const name of ['UTC', 'America/New_York']) zone(name, () => {
+    const offset = name === 'UTC' ? 0 : 4;
+    for (const [hour, day, expectedHour] of [[6, 14, 8], [12, 14, 20], [21, 15, 8]]) {
+      const reference = Date.UTC(2026, 9, 14, hour + offset);
+      for (const phrase of [
+        'Recuerda a las 8:00 poner a lavar',
+        'RECUERDA que a las 8:00 poner a lavar',
+        'Recuerda at 8:00 poner a lavar',
+        'Recuérdame a las 8:00 poner a lavar',
+        'Remind me at 8:00 poner a lavar'
+      ]) {
+        const actual = parser.parse(phrase, reference);
+        assert.equal(actual.title, 'poner a lavar', phrase);
+        assert.equal(actual.reference, reference, phrase);
+        assert.equal(actual.instant, Date.UTC(2026, 9, day, expectedHour + offset), phrase);
+      }
+    }
+  });
+});
+
+test('Recuerda keeps explicit days, title text, and invalid schedule boundaries', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const [phrase, title, instant] of [
+    ['Recuerda mañana a las 8:00 poner a lavar', 'poner a lavar', Date.UTC(2026, 9, 15, 8)],
+    ['A las 8:00, recuerda poner a lavar', 'poner a lavar', Date.UTC(2026, 9, 14, 20)],
+    ['Recuerda a las 8:00 PM revisar Café', 'revisar Café', Date.UTC(2026, 9, 14, 20)],
+    ['Recuerda a las 8:00 to AM radio', 'AM radio', Date.UTC(2026, 9, 14, 20)],
+    ['Recuerda a las 8:00 to PM review', 'PM review', Date.UTC(2026, 9, 14, 20)],
+    ['Recuerda revisar Café en cinco minutos', 'revisar Café', Date.UTC(2026, 9, 14, 12, 5)],
+    ['Recuerda revisar Café', 'revisar Café', Date.UTC(2026, 9, 14, 20)],
+    ['Recuerdaque revisar Café', 'Recuerdaque revisar Café', Date.UTC(2026, 9, 14, 20)]
+  ]) {
+    const actual = parser.parse(phrase, reference);
+    assert.equal(actual.title, title, phrase);
+    assert.equal(actual.reference, reference, phrase);
+    assert.equal(actual.instant, instant, phrase);
+  }
+  for (const phrase of [
+    'Recuerda', 'Recuerda que', 'Recuerda a las 8:00',
+    'Recuerda a las 8:60 poner a lavar', 'Recuerda a las 25:00 poner a lavar',
+    'Recuerda a las 8:00 poner a lavar en cinco minutos',
+    'Recuerda a las 8:00 poner a lavar a las 9:00',
+    'Recuerda a las 8:00 poner a lavar cada día'
+  ]) assert.throws(() => parser.parse(phrase, reference), undefined, phrase);
+}));
+
 test('half-hour reminders preserve bilingual titles and the exact captured reference', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 14, 12, 34, 56, 789);
   for (const [phrase, title] of [

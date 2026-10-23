@@ -36,6 +36,57 @@ function phone(customController, clock) {
   return { listeners, deliveries, logs, timers, pins, pebble, urls, storage };
 }
 
+test('Recuerda time-only phone drafts use today and insert only after confirmation', () => {
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'UTC';
+    const f = phone();
+    function exchange(COMMAND, extra) {
+      const index = f.deliveries.length;
+      f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+      const result = f.deliveries[index].payload;
+      f.deliveries[index].success();
+      return result;
+    }
+    const draft = exchange('parse', { TEXT: 'Recuerda a las 8:00 poner a lavar' });
+    assert.equal(draft.STATUS, 'draft');
+    assert.equal(draft.TITLE, 'poner a lavar');
+    assert.equal(draft.WHEN, '2026-10-14 8:00 PM');
+    assert.equal(draft.CAN_CONFIRM, 1);
+    assert.equal(draft.SECONDS_UNTIL, 8 * 3600);
+    assert.equal(f.pins.length, 0);
+    f.listeners.ready();
+    assert.equal(f.deliveries.at(-1).payload.TOKEN, draft.TOKEN);
+    f.deliveries.at(-1).success();
+    assert.equal(f.pins.length, 0);
+    exchange('confirm', { TOKEN: draft.TOKEN });
+    assert.equal(f.pins.length, 1);
+    assert.equal(f.pins[0].layout.title, 'poner a lavar');
+    assert.equal(f.pins[0].time, '2026-10-14T20:00:00.000Z');
+    assert.equal(f.pins[0].reminders.length, 1);
+    assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+    assert.deepEqual(f.logs, []);
+    exchange('confirm', { TOKEN: draft.TOKEN });
+    assert.equal(f.pins.length, 1);
+    assert.doesNotMatch(f.logs.join(''), /Recuerda|poner|lavar|8:00/);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+test('Recuerda invalid clocks cannot fall back to defaults or insert a pin', () => {
+  const f = phone();
+  f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: 'Recuerda a las 8:60 poner a lavar' } });
+  const rejected = f.deliveries[0].payload;
+  assert.ok(rejected.ERROR);
+  assert.notEqual(rejected.CAN_CONFIRM, 1);
+  f.deliveries[0].success();
+  f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: rejected.TOKEN } });
+  assert.equal(f.pins.length, 0);
+  assert.doesNotMatch(f.logs.join(''), /Recuerda|poner|lavar|8:60/);
+});
+
 test('Timeline timezone-error replay can cancel its exact draft and then open another pin', () => {
   const previous = process.env.TZ;
   try {
