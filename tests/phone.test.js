@@ -69,7 +69,7 @@ test('recognition additions phone creation and Timeline edits share exact confir
         }
         const draft = edit ?
           exchange('pin_time', { LAUNCH_CODE: code, TOKEN: open.TOKEN, TEXT: schedule }) :
-          exchange('parse', { TEXT: 'Por favor recuérdame Preserved Café ' + schedule });
+          exchange('parse', { TEXT: 'Recuérdame Preserved Café ' + schedule });
         assert.equal(draft.STATUS, 'draft', schedule);
         assert.equal(draft.TITLE, 'Preserved Café', schedule);
         assert.equal(draft.WHEN, when, schedule);
@@ -94,6 +94,45 @@ test('recognition additions phone creation and Timeline edits share exact confir
         assert.equal(f.pins.length, edit ? 2 : 1);
         assert.doesNotMatch(f.logs.join(''), /Café|quarter|semana|recuerda|eight/i);
       }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+test('phone preserves courtesy words in reviewed titles until one explicit confirmation', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    for (const title of ['Please remind me to Revisar Café', 'Por favor recuérdame Revisar Café']) {
+      const f = phone();
+      function exchange(COMMAND, extra) {
+        const index = f.deliveries.length;
+        f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+        const result = f.deliveries[index].payload;
+        f.deliveries[index].success();
+        return result;
+      }
+      const draft = exchange('parse', { TEXT: title + ' in five minutes' });
+      assert.equal(draft.STATUS, 'draft');
+      assert.equal(draft.TITLE, title);
+      assert.equal(draft.WHEN, '2026-10-14 12:05 PM');
+      assert.equal(draft.CAN_CONFIRM, 1);
+      assert.equal(draft.SECONDS_UNTIL, 300);
+      assert.equal(f.pins.length, 0);
+      assert.equal(exchange('ready').TITLE, title);
+      assert.equal(f.pins.length, 0);
+      exchange('confirm', { TOKEN: draft.TOKEN });
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].layout.title, title);
+      assert.equal(f.pins[0].time, '2026-10-14T12:05:00.000Z');
+      assert.equal(f.pins[0].reminders.length, 1);
+      assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      assert.deepEqual(f.logs, []);
+      exchange('confirm', { TOKEN: draft.TOKEN });
+      assert.equal(f.pins.length, 1);
+      assert.doesNotMatch(f.logs.join(''), /please|por favor|Café|recuérdame/i);
     }
   } finally {
     if (previous === undefined) delete process.env.TZ;

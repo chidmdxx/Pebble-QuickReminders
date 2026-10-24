@@ -315,7 +315,7 @@ function localDisplay(instant) {
 }
 
 function stripPrompt(value) {
-  return value.replace(/^(?:(?:please )?(?:remind|reminde) me(?: to| about)?|remember to|don['’]t forget to|(?:por favor )?(?:recuérdame|recuerdame|recuerda|recordarme|recordar|avísame|avisame)(?: que)?|no olvides(?: que)?)(?:\s+|$)/i, '');
+  return value.replace(/^(?:(?:remind|reminde) me(?: to| about)?|remember to|don['’]t forget to|(?:recuérdame|recuerdame|recuerda|recordarme|recordar|avísame|avisame)(?: que)?|no olvides(?: que)?)(?:\s+|$)/i, '');
 }
 
 function timezoneQualifier(value) {

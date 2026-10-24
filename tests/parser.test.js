@@ -127,8 +127,7 @@ test('recognition additions shift the day after tomorrow by local calendar days'
 test('recognition additions strip only anchored bounded prompt wrappers', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 14, 12);
   for (const prefix of [
-    'please remind me to ', "don't forget to ", 'don’t forget to ',
-    'por favor recuérdame ', 'por favor recuerdame que ', 'avísame ', 'avisame ',
+    "don't forget to ", 'don’t forget to ', 'avísame ', 'avisame ',
     'no olvides ', 'no olvides que '
   ]) {
     for (const phrase of [
@@ -155,6 +154,28 @@ test('recognition additions strip only anchored bounded prompt wrappers', () => 
     assert.throws(() => parser.parse(prefix + 'in five minutes', reference), /title/);
   }
   assert.equal(parser.parse('No olvides quehaceres in five minutes', reference).title, 'quehaceres');
+}));
+
+test('courtesy prefixes remain title text rather than new reminder wrappers', () => zone('UTC', () => {
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const prefix of ['Please remind me to ', 'Por favor recuérdame ', 'Por favor avísame ']) {
+    const title = prefix + 'Revisar Café';
+    for (const [phrase, instant] of [
+      [title + ' in five minutes', Date.UTC(2026, 9, 14, 12, 5)],
+      ['in five minutes ' + title, Date.UTC(2026, 9, 14, 12, 5)],
+      ['tomorrow at eight thirty ' + title, Date.UTC(2026, 9, 15, 8, 30)],
+      [title, Date.UTC(2026, 9, 14, 20)]
+    ]) {
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, title, phrase);
+      assert.equal(actual.instant, instant, phrase);
+      assert.equal(actual.reference, reference, phrase);
+    }
+    assert.throws(() => parser.parseTime(prefix + 'in five minutes', reference, undefined, 'Preserved'));
+  }
+  for (const title of ['Review please notes', 'Review por favor notes']) {
+    assert.equal(parser.parse(title + ' in five minutes', reference).title, title);
+  }
 }));
 
 test('recognition additions retain local time and subminute precision for days and weeks', () => {

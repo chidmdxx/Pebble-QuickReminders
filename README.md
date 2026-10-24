@@ -2,6 +2,8 @@
 
 Voice reminders for Pebble watches. Dictate in English, Spanish, or a mix of both, review the title and time, then press Select to add a Timeline pin with one alert.
 
+Version **1.0.0** adds the bounded spoken clocks, explicit today periods, after-tomorrow dates, calendar-relative days/weeks, and reminder prompts described below.
+
 Requires a microphone-equipped Pebble and an Android phone running the official Pebble companion with speech recognition enabled. One package supports Pebble Time, Time Steel, Time Round, Pebble 2, Time 2, Pebble 2 Duo, and Pebble Round 2. Original Pebble and Pebble Steel have no microphone and are not supported.
 
 ## Use
@@ -32,7 +34,7 @@ Explicit today periods stay today: `this morning` / `esta mañana` use the AM de
 
 Clocks also accept English hour/minute words such as `at eight thirty` and `at eight thirty five`, Spanish `a las ocho y media` / `a las ocho y cuarto`, English `at quarter past eight` / `at quarter to eight`, and Spanish `a las ocho menos cuarto`. These keep the same next-future AM/PM inference. `Quarter to twelve AM` means 11:45 PM before that midnight; an explicit named date anchors the midnight, so `tomorrow at quarter to twelve AM` is tonight at 11:45 PM. A bare numeric clock still needs a colon for minutes (`8:30`, not `8 30`). Spaced or punctuated meridiems such as `p. m.`, `p m`, and `a. m.` are recognized only as part of a clock; matching text in a title is preserved. Introduce a numbered title with `to` or a reminder prompt after a new spoken clock so it cannot be mistaken for an extra minute count.
 
-Prompt wrappers are anchored to the beginning of the utterance or the title after a leading schedule: `please remind me to`, `don't forget to` (also a curly apostrophe), `por favor recuérdame`, `avísame` / `avisame`, and `no olvides`, in addition to the existing prompts. Spanish prompts accept a whole-word `que` before the action; `Recuérdame comprar leche` and `Recuérdame que tengo una cita` are natural examples. The same words within a title are not removed. Punctuation inside wrappers, such as `Por favor, recuérdame`, is not normalized.
+Prompt wrappers are anchored to the beginning of the utterance or the title after a leading schedule: `don't forget to` (also a curly apostrophe), `avísame` / `avisame`, and `no olvides`, in addition to the existing prompts. Spanish prompts accept a whole-word `que` before the action; `Recuérdame comprar leche` and `Recuérdame que tengo una cita` are natural examples. The same words within a title are not removed. Courtesy prefixes `please` and `por favor` are not recognized as wrappers; they remain in the title, including any reminder words following them.
 
 The parser supports a bounded set of phrases, not unrestricted natural language. Recurring reminders, competing schedules, invalid dates, and ambiguous daylight-saving times require another phrase. Titles are limited to 160 UTF-8 bytes.
 
@@ -58,7 +60,7 @@ After a successful insertion call, the phone prunes hidden lookup entries **more
 
 ## Upgrade compatibility
 
-Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Change time** action automatically. Versions 0.4.1 through 0.4.3 keep the same storage format. Existing 0.4.0 and 0.4.1 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Change time**.
+Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Change time** action automatically. Versions 0.4.1 through 1.0.0 keep the same storage format. Existing 0.4.0 and 0.4.1 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Change time**.
 
 ## Build and install
 
