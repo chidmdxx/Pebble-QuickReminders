@@ -18,7 +18,7 @@ Fetch only the official pages needed for the change. Use their Markdown versions
 - [Building for every Pebble](https://developer.repebble.com/guides/best-practices/building-for-every-pebble.md).
 - [Developer Connection](https://developer.repebble.com/guides/tools-and-resources/developer-connection.md) and [SDK setup](https://developer.repebble.com/sdk.md).
 
-Pebble's [upstream agent skill](https://github.com/coredevices/pebble-watchface-agent-skill) is an optional reference, not a vendored dependency. These instructions are project-owned.
+Pebble's [upstream agent skill](https://github.com/coredevices/pebble-watchface-agent-skill/blob/main/skills/pebble-watchface/SKILL.md) is an optional reference, not a vendored dependency. These instructions are project-owned. Apply upstream advice to this existing C watchapp; do not adopt its new-project UUID, Emery-only defaults, Alloy conversion, publishing steps, or emulator reset commands automatically.
 
 ## Preserve the app's boundaries
 
@@ -26,6 +26,7 @@ Pebble's [upstream agent skill](https://github.com/coredevices/pebble-watchface-
 - Review rectangular, round, color, and monochrome behavior when changing UI. Use capability checks and SDK layout APIs rather than one screen's fixed coordinates.
 - Trace protocol changes through `app/package.json`, C tuple handling, the phone controller, and tests. Run `pebble clean` after changing message keys so generated headers do not drift.
 - Keep insertion behind explicit confirmation. Preserve persisted identity, exact time, stale-response guards, and visible failures. Local pin insertion has no watch-delivery acknowledgement; do not label an accepted call as delivered.
+- Check companion support separately from pin-payload tests. The current local-pins guide says custom `actions` are ignored; the existing **Change time** flow depends on a companion that actually supports local `openWatchApp` actions. Do not infer that capability from the general pin schema, an emulator, or a mocked insertion call.
 - Use synthetic transcripts and reminder titles. Do not log reminder text, inspect credentials, or put SDK profiles in the repository.
 
 For phrase parsing, follow `../phrase-pattern-improvements/SKILL.md`.
@@ -45,5 +46,7 @@ pebble screenshot --no-open --emulator gabbro screenshot.png
 Use a temporary output location for screenshots. Repeat UI checks on the affected screen shapes and monochrome/color platforms; one Round 2 capture does not cover all watches. Build all six targets and check the PBW includes their binaries plus `pebble-js-app.js`, as CI does.
 
 Exercise the changed interaction, not only installation: dictation to draft, scrolling before confirmation, cancellation, and applicable error/recovery paths. Report separately what automated tests, emulator runs, and hardware observations establish. An emulator without `Pebble.insertTimelinePin` can exercise the visible failure, not delivery.
+
+If a screenshot shows a watchface or another app, it does not validate QuickReminders. Inspect the launch result and exercise this app without resetting shared emulator data. If dictation or the required companion API cannot be exercised, report that check as unverified rather than substituting a build or native harness result.
 
 Do not install on a physical watch, publish to the store, change authentication, reset emulator data, or rewrite Git history as an automatic cleanup step. Obtain explicit authorization for those actions. Reuse an authorized profile without reading its secrets, and do not sign out unless requested.
