@@ -75,6 +75,48 @@ test('Recuerda time-only phone drafts use today and insert only after confirmati
   }
 });
 
+test('Recuerda and English clock-boundary drafts cancel without inserting or replaying', () => {
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'UTC';
+    for (const [hour, when, seconds] of [
+      [8, '2026-10-14 8:00 PM', 12 * 3600],
+      [20, '2026-10-15 8:00 AM', 12 * 3600]
+    ]) {
+      for (const [phrase, title] of [
+        ['Recuerda a las 8:00 revisar Cafe', 'revisar Cafe'],
+        ['Remind me at 8:00 to Check AM radio', 'Check AM radio']
+      ]) {
+        const f = phone(undefined, () => Date.UTC(2026, 9, 14, hour));
+        function exchange(COMMAND, extra) {
+          const index = f.deliveries.length;
+          f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+          const result = f.deliveries[index].payload;
+          f.deliveries[index].success();
+          return result;
+        }
+        const draft = exchange('parse', { TEXT: phrase });
+        assert.equal(draft.STATUS, 'draft');
+        assert.equal(draft.TITLE, title);
+        assert.equal(draft.WHEN, when);
+        assert.equal(draft.CAN_CONFIRM, 1);
+        assert.equal(draft.SECONDS_UNTIL, seconds);
+        assert.equal(f.pins.length, 0);
+        assert.deepEqual(f.logs, []);
+        assert.equal(exchange('cancel', { TOKEN: draft.TOKEN }).STATUS, 'home');
+        assert.ok(exchange('confirm', { TOKEN: draft.TOKEN }).ERROR);
+        f.listeners.ready();
+        f.deliveries.at(-1).success();
+        assert.equal(f.pins.length, 0);
+        assert.deepEqual(f.logs, ['QuickReminders: request failed.']);
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('Recuerda invalid clocks cannot fall back to defaults or insert a pin', () => {
   const f = phone();
   f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: 'Recuerda a las 8:60 poner a lavar' } });

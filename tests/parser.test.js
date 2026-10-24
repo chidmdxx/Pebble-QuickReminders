@@ -44,6 +44,46 @@ test('Recuerda time-only reminders use today when the clock is still ahead', () 
   });
 });
 
+test('Recuerda and English prompts keep exact clock cutoffs and title boundaries', () => zone('UTC', () => {
+  for (const [reference, instant] of [
+    [Date.UTC(2026, 9, 14, 7, 59, 59, 999), Date.UTC(2026, 9, 14, 8)],
+    [Date.UTC(2026, 9, 14, 8), Date.UTC(2026, 9, 14, 20)],
+    [Date.UTC(2026, 9, 14, 19, 59, 59, 999), Date.UTC(2026, 9, 14, 20)],
+    [Date.UTC(2026, 9, 14, 20), Date.UTC(2026, 9, 15, 8)]
+  ]) {
+    for (const phrase of [
+      'Recuerda a las 8:00 revisar Cafe',
+      'Remind me at 8:00 to revisar Cafe'
+    ]) {
+      const actual = parser.parse(phrase, reference);
+      assert.equal(actual.title, 'revisar Cafe', phrase);
+      assert.equal(actual.reference, reference, phrase);
+      assert.equal(actual.instant, instant, phrase);
+    }
+  }
+  const reference = Date.UTC(2026, 9, 14, 12);
+  for (const title of ['Recuerdamejor', 'Recuerdaque', 'Review Recuerda notes']) {
+    const actual = parser.parse(title + ' in five minutes', reference);
+    assert.equal(actual.title, title);
+    assert.equal(actual.instant, Date.UTC(2026, 9, 14, 12, 5));
+    assert.equal(actual.reference, reference);
+  }
+}));
+
+test('Recuerda retains phone-local DST gaps, overlaps and next-day calendar arithmetic', () => zone('America/New_York', () => {
+  for (const prefix of ['Recuerda ', 'Remind me ']) {
+    assert.throws(() => parser.parse(prefix + 'tomorrow at 2:30 AM to Test',
+      Date.UTC(2027, 2, 13, 12)), /gap/);
+    assert.throws(() => parser.parse(prefix + 'tomorrow at 1:30 AM to Test',
+      Date.UTC(2026, 9, 31, 12)), /twice/);
+    const reference = Date.UTC(2026, 10, 1, 1);
+    const actual = parser.parse(prefix + 'a las 8:00 to Test', reference);
+    assert.equal(actual.title, 'Test');
+    assert.equal(actual.reference, reference);
+    assert.equal(actual.instant, Date.UTC(2026, 10, 1, 13));
+  }
+}));
+
 test('Recuerda keeps explicit days, title text, and invalid schedule boundaries', () => zone('UTC', () => {
   const reference = Date.UTC(2026, 9, 14, 12);
   for (const [phrase, title, instant] of [
@@ -64,6 +104,9 @@ test('Recuerda keeps explicit days, title text, and invalid schedule boundaries'
   for (const phrase of [
     'Recuerda', 'Recuerda que', 'Recuerda a las 8:00',
     'Recuerda a las 8:60 poner a lavar', 'Recuerda a las 25:00 poner a lavar',
+    'Recuerda a las 8:00 UTC poner a lavar',
+    'Recuerda a las 8 30 poner a lavar',
+    'Recuerda en cero minutos poner a lavar',
     'Recuerda a las 8:00 poner a lavar en cinco minutos',
     'Recuerda a las 8:00 poner a lavar a las 9:00',
     'Recuerda a las 8:00 poner a lavar cada día'
