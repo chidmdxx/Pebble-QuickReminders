@@ -36,6 +36,160 @@ function phone(customController, clock) {
   return { listeners, deliveries, logs, timers, pins, pebble, urls, storage };
 }
 
+test('recognition additions phone creation and Timeline edits share exact confirmed schedules', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    for (const [schedule, instant, when] of [
+      ['at eight thirty', Date.UTC(2026, 9, 14, 20, 30), '2026-10-14 8:30 PM'],
+      ['a las ocho y cuarto p. m.', Date.UTC(2026, 9, 14, 20, 15), '2026-10-14 8:15 PM'],
+      ['at quarter to twelve AM', Date.UTC(2026, 9, 14, 23, 45), '2026-10-14 11:45 PM'],
+      ['tonight', Date.UTC(2026, 9, 14, 20), '2026-10-14 8:00 PM'],
+      ['pasado mañana', Date.UTC(2026, 9, 16, 10), '2026-10-16 10:00 AM'],
+      ['in two days', Date.UTC(2026, 9, 16, 12), '2026-10-16 12:00 PM'],
+      ['dentro de una semana', Date.UTC(2026, 9, 21, 12), '2026-10-21 12:00 PM']
+    ]) {
+      for (const edit of [false, true]) {
+        let now = Date.UTC(2026, 9, 14, 12);
+        const f = phone(undefined, () => now);
+        function exchange(COMMAND, extra) {
+          const index = f.deliveries.length;
+          f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+          const result = f.deliveries[index].payload;
+          f.deliveries[index].success();
+          return result;
+        }
+        let open, code, id;
+        if (edit) {
+          const original = exchange('parse', { TEXT: 'Preserved Café in five minutes' });
+          exchange('confirm', { TOKEN: original.TOKEN });
+          code = f.pins[0].actions[0].launchCode;
+          id = f.pins[0].id;
+          open = exchange('pin_open', { LAUNCH_CODE: code });
+        }
+        const draft = edit ?
+          exchange('pin_time', { LAUNCH_CODE: code, TOKEN: open.TOKEN, TEXT: schedule }) :
+          exchange('parse', { TEXT: 'Recuérdame Preserved Café ' + schedule });
+        assert.equal(draft.STATUS, 'draft', schedule);
+        assert.equal(draft.TITLE, 'Preserved Café', schedule);
+        assert.equal(draft.WHEN, when, schedule);
+        assert.equal(draft.CAN_CONFIRM, 1, schedule);
+        assert.equal(draft.SECONDS_UNTIL, (instant - now) / 1000, schedule);
+        assert.equal(f.pins.length, edit ? 1 : 0);
+        now += 60000;
+        const replay = edit ?
+          exchange('pin_open', { LAUNCH_CODE: code, TOKEN: draft.TOKEN }) : exchange('ready');
+        assert.equal(replay.TOKEN, draft.TOKEN);
+        assert.equal(replay.WHEN, when);
+        assert.equal(f.pins.length, edit ? 1 : 0);
+        exchange(edit ? 'pin_confirm' : 'confirm', { LAUNCH_CODE: code, TOKEN: draft.TOKEN });
+        assert.equal(f.pins.length, edit ? 2 : 1);
+        const pin = f.pins.at(-1);
+        if (edit) assert.equal(pin.id, id);
+        assert.equal(pin.layout.title, 'Preserved Café');
+        assert.equal(pin.time, new Date(instant).toISOString());
+        assert.equal(pin.reminders.length, 1);
+        assert.equal(pin.reminders[0].time, pin.time);
+        exchange(edit ? 'pin_confirm' : 'confirm', { LAUNCH_CODE: code, TOKEN: draft.TOKEN });
+        assert.equal(f.pins.length, edit ? 2 : 1);
+        assert.doesNotMatch(f.logs.join(''), /Café|quarter|semana|recuerda|eight/i);
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+test('phone preserves courtesy words in reviewed titles until one explicit confirmation', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    for (const title of ['Please remind me to Revisar Café', 'Por favor recuérdame Revisar Café']) {
+      const f = phone();
+      function exchange(COMMAND, extra) {
+        const index = f.deliveries.length;
+        f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+        const result = f.deliveries[index].payload;
+        f.deliveries[index].success();
+        return result;
+      }
+      const draft = exchange('parse', { TEXT: title + ' in five minutes' });
+      assert.equal(draft.STATUS, 'draft');
+      assert.equal(draft.TITLE, title);
+      assert.equal(draft.WHEN, '2026-10-14 12:05 PM');
+      assert.equal(draft.CAN_CONFIRM, 1);
+      assert.equal(draft.SECONDS_UNTIL, 300);
+      assert.equal(f.pins.length, 0);
+      assert.equal(exchange('ready').TITLE, title);
+      assert.equal(f.pins.length, 0);
+      exchange('confirm', { TOKEN: draft.TOKEN });
+      assert.equal(f.pins.length, 1);
+      assert.equal(f.pins[0].layout.title, title);
+      assert.equal(f.pins[0].time, '2026-10-14T12:05:00.000Z');
+      assert.equal(f.pins[0].reminders.length, 1);
+      assert.equal(f.pins[0].reminders[0].time, f.pins[0].time);
+      assert.deepEqual(f.logs, []);
+      exchange('confirm', { TOKEN: draft.TOKEN });
+      assert.equal(f.pins.length, 1);
+      assert.doesNotMatch(f.logs.join(''), /please|por favor|Café|recuérdame/i);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+test('recognition additions phone errors, cancellation and travel never submit unreviewed times', () => {
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'UTC';
+    for (const phrase of [
+      'Test at eight sixty', 'Test at 8 p.', 'Test in zero days',
+      'Test in two days tomorrow', 'Test this morning',
+      'Test 2027-02-30 at quarter to twelve AM',
+      'Test pasado mañana at 8 PM in five minutes'
+    ]) {
+      const f = phone();
+      f.listeners.appmessage({ payload: { COMMAND: 'parse', TEXT: phrase } });
+      const error = f.deliveries[0].payload;
+      f.deliveries[0].success();
+      assert.ok(error.ERROR, phrase);
+      assert.notEqual(error.CAN_CONFIRM, 1, phrase);
+      f.listeners.appmessage({ payload: { COMMAND: 'confirm', TOKEN: error.TOKEN } });
+      assert.equal(f.pins.length, 0);
+      assert.doesNotMatch(f.logs.join(''), /eight|zero|mañana|Test/);
+    }
+    for (const travel of [false, true]) {
+      process.env.TZ = 'UTC';
+      const f = phone();
+      function exchange(COMMAND, extra) {
+        const index = f.deliveries.length;
+        f.listeners.appmessage({ payload: Object.assign({ COMMAND }, extra) });
+        const result = f.deliveries[index].payload;
+        f.deliveries[index].success();
+        return result;
+      }
+      const draft = exchange('parse', { TEXT: "Don't forget to Test en dos días" });
+      assert.equal(draft.STATUS, 'draft');
+      if (travel) {
+        process.env.TZ = 'America/New_York';
+        const restored = exchange('ready');
+        assert.equal(restored.CAN_CONFIRM, 0);
+        assert.match(restored.ERROR, /timezone/);
+      } else {
+        assert.equal(exchange('cancel', { TOKEN: draft.TOKEN }).STATUS, 'home');
+      }
+      assert.ok(exchange('confirm', { TOKEN: draft.TOKEN }).ERROR);
+      assert.equal(f.pins.length, 0);
+      assert.doesNotMatch(f.logs.join(''), /forget|Test|dos/);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('Recuerda time-only phone drafts use today and insert only after confirmation', () => {
   const previous = process.env.TZ;
   try {
@@ -834,9 +988,9 @@ test('unparsed leading time boundaries cannot expose confirmation or create pins
       'Mañana a la puesta del sol, recuérdame comprar pan',
       'Tomorrow evening at sunset, remind me to buy bread',
       'Mañana por la mañana al amanecer, recuérdame comprar pan',
-      'Tomorrow at eight thirty p.m., remind me to buy bread',
+      'Tomorrow at eight sixty p.m., remind me to buy bread',
       ...['Tomorrow at 8', 'Mañana a las ocho', 'At 8'].flatMap(schedule =>
-        ['p. m.', 'p m', 'p .m.', 'p . m', 'a. m.', 'a m', 'a .m.', 'p.', 'a.', 'p', 'a', 'a ', 'p '].flatMap(qualifier =>
+        ['p.', 'a.', 'p', 'a', 'a ', 'p '].flatMap(qualifier =>
           ['remind me to buy bread', 'recuérdame comprar pan'].map(prompt =>
             `${schedule} ${qualifier}, ${prompt}`))),
       'At 8 PM at 9 PM buy bread',

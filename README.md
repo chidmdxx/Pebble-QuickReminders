@@ -2,6 +2,8 @@
 
 Voice reminders for Pebble watches. Dictate in English, Spanish, or a mix of both, review the title and time, then press Select to add a Timeline pin with one alert.
 
+Version **1.0.0** adds the bounded spoken clocks, explicit today periods, after-tomorrow dates, calendar-relative days/weeks, and reminder prompts described below.
+
 Requires a microphone-equipped Pebble and an Android phone running the official Pebble companion with speech recognition enabled. One package supports Pebble Time, Time Steel, Time Round, Pebble 2, Time 2, Pebble 2 Duo, and Pebble Round 2. Original Pebble and Pebble Steel have no microphone and are not supported.
 
 ## Use
@@ -26,6 +28,14 @@ When you name a day without a time, the default is 10 AM. With no day or time, t
 
 Day periods use those defaults too: `mañana en la mañana` / `tomorrow morning` use AM, and `mañana por la noche` / `tomorrow evening` use PM. A leading period without a day, such as `En la mañana revisar la prueba`, uses the next future occurrence of that default time (today or tomorrow).
 
+Explicit today periods stay today: `this morning` / `esta mañana` use the AM default; `this afternoon`, `this evening`, `tonight`, `esta tarde`, and `esta noche` use the PM default. They reject a default time that has passed, including the exact cutoff, rather than moving to tomorrow. They do not distinguish afternoon from evening. Use `today at 3 PM` / `hoy a las 3 PM` for a specific clock instead of combining a today-period phrase with another time.
+
+`The day after tomorrow` / `pasado mañana` mean two phone-local calendar days ahead, with the AM default unless you give a clock. `In two days`, `en dos días`, `in a week`, and `dentro de una semana` instead keep the captured local clock time, including seconds, on the shifted date. Days and weeks follow the calendar through daylight-saving changes; minutes and hours remain elapsed durations. Nonexistent or repeated target wall times are rejected. Counts are whole numbers (written counts 1 through 99 or digits), still subject to the one-year scheduling horizon; compound and fractional durations remain unsupported.
+
+Clocks also accept English hour/minute words such as `at eight thirty` and `at eight thirty five`, Spanish `a las ocho y media` / `a las ocho y cuarto`, English `at quarter past eight` / `at quarter to eight`, and Spanish `a las ocho menos cuarto`. These keep the same next-future AM/PM inference. `Quarter to twelve AM` means 11:45 PM before that midnight; an explicit named date anchors the midnight, so `tomorrow at quarter to twelve AM` is tonight at 11:45 PM. A bare numeric clock still needs a colon for minutes (`8:30`, not `8 30`). Spaced or punctuated meridiems such as `p. m.`, `p m`, and `a. m.` are recognized only as part of a clock; matching text in a title is preserved. Introduce a numbered title with `to` or a reminder prompt after a new spoken clock so it cannot be mistaken for an extra minute count.
+
+Prompt wrappers are anchored to the beginning of the utterance or the title after a leading schedule: `don't forget to` (also a curly apostrophe), `avísame` / `avisame`, and `no olvides`, in addition to the existing prompts. Spanish prompts accept a whole-word `que` before the action; `Recuérdame comprar leche` and `Recuérdame que tengo una cita` are natural examples. The same words within a title are not removed. Courtesy prefixes `please` and `por favor` are not recognized as wrappers; they remain in the title, including any reminder words following them.
+
 The parser supports a bounded set of phrases, not unrestricted natural language. Recurring reminders, competing schedules, invalid dates, and ambiguous daylight-saving times require another phrase. Titles are limited to 160 UTF-8 bytes.
 
 `En media hora`, `in half an hour`, and `in half hour` mean exactly 30 minutes from dictation, whether they come before or after the title. Reviewing later does not move that time. Other fractional or compound intervals, such as `in 0.5 hours` or `en una y media horas`, remain unsupported.
@@ -38,7 +48,7 @@ Open a QuickReminders pin in Timeline and select **Change time**. This opens onl
 
 Use Up/Down and Select to choose **In 5 minutes**, **In 10 minutes**, **In 30 minutes**, or **New time** to dictate a schedule. The menu omits the reminder heading and original-time subtitles; the full title and new time appear in the confirmation review. Selection uses the configured ribbon color on color watches, or black on monochrome watches. Change **Snooze preset 1** through **Snooze preset 3** in the companion settings to whole minutes from 1 through 10080. Existing settings without presets use fresh defaults of 5/10/30; a supplied invalid preset field must be corrected in Settings.
 
-Speak only a supported schedule, such as `in half an hour`, `en media hora`, `dentro de cinco minutos`, `tomorrow at 8 PM`, or `mañana a las tres PM`. A named day alone uses the configured AM default. An unscheduled phrase, an extra title, compound intervals, and invalid or ambiguous clock changes are rejected. The original title is preserved.
+Speak only a supported schedule, such as `in half an hour`, `en media hora`, `dentro de cinco minutos`, `tomorrow at 8 PM`, `mañana a las tres PM`, `at eight thirty`, `esta noche`, `pasado mañana`, or `en dos días`. A named day alone uses the configured AM default; relative days/weeks keep the captured local clock time. An unscheduled phrase, an extra title, compound intervals, and invalid or ambiguous clock changes are rejected. The original title is preserved.
 
 Each choice opens the full title/time review. Scroll long reminders to the bottom, then press Select to confirm. No pin is changed before confirmation. Relative times are measured once when the phone receives the choice, not when you later confirm. Confirmation replaces the **same pin ID** with one reminder at the chosen time. Back cancels an unsubmitted edit and exits; it never starts normal dictation. If a request is already in flight, Back exits without issuing another request; reopening that pin recovers any saved preview or uncertain insertion.
 
@@ -50,7 +60,7 @@ After a successful insertion call, the phone prunes hidden lookup entries **more
 
 ## Upgrade compatibility
 
-Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Change time** action automatically. Versions 0.4.1 through 0.4.3 keep the same storage format. Existing 0.4.0 and 0.4.1 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Change time**.
+Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Change time** action automatically. Versions 0.4.1 through 1.0.0 keep the same storage format. Existing 0.4.0 and 0.4.1 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Change time**.
 
 ## Build and install
 
