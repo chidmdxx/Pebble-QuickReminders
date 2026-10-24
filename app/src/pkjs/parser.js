@@ -268,7 +268,7 @@ function localDisplay(instant) {
 }
 
 function stripPrompt(value) {
-  return value.replace(/^(?:(?:remind|reminde) me(?: to| about)?|remember to|(?:recuérdame|recuerdame|recordarme|recordar)(?: que)?)(?:\s+|$)/i, '');
+  return value.replace(/^(?:(?:remind|reminde) me(?: to| about)?|remember to|(?:recuérdame|recuerdame|recuerda|recordarme|recordar)(?: que)?)(?:\s+|$)/i, '');
 }
 
 function timezoneQualifier(value) {
