@@ -4,6 +4,8 @@ Voice reminders for Pebble watches. Dictate in English, Spanish, or a mix of bot
 
 Version **1.0.0** adds the bounded spoken clocks, explicit today periods, after-tomorrow dates, calendar-relative days/weeks, and reminder prompts described below.
 
+Version **1.0.1** updates agent skill routing and companion-compatibility documentation without changing reminder behavior.
+
 Requires a microphone-equipped Pebble and an Android phone running the official Pebble companion with speech recognition enabled. One package supports Pebble Time, Time Steel, Time Round, Pebble 2, Time 2, Pebble 2 Duo, and Pebble Round 2. Original Pebble and Pebble Steel have no microphone and are not supported.
 
 ## Use
@@ -62,7 +64,7 @@ After a successful insertion call, the phone prunes hidden lookup entries **more
 
 ## Upgrade compatibility
 
-Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Change time** action automatically. Versions 0.4.1 through 1.0.0 keep the same storage format. Existing 0.4.0 and 0.4.1 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Change time**.
+Version 0.4.0 introduced automatic migration of valid legacy reminder recovery data to the v2 storage format under the existing local-storage key. Versions before 0.4.0 cannot read that format, so downgrading to them after migration is not supported. Migration does not insert or rewrite Timeline pins; existing pins do not gain the **Change time** action automatically. Versions 0.4.1 through 1.0.1 keep the same storage format. Existing 0.4.0 and 0.4.1 pins retain their old action label until explicitly rescheduled; newly created or rescheduled pins use **Change time**.
 
 ## Build and install
 
