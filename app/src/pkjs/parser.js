@@ -19,12 +19,15 @@ var months = [
 ];
 var monthNames = months.map(function(names) { return names.join('|'); }).join('|');
 var monthDayPattern = '(?:(?:' + monthNames + ') \\d{1,2}|\\d{1,2} de (?:' + monthNames + '))';
-var dayPattern = '(?:today|hoy|tomorrow|mañana|manana|\\d{4}-\\d{2}-\\d{2}|' +
+var todayPeriodPattern = '(?:this (?:morning|afternoon|evening)|tonight|esta (?:mañana|manana|tarde|noche))';
+var afterTomorrowPattern = '(?:the day after tomorrow|pasado (?:mañana|manana))';
+var dayPattern = '(?:' + afterTomorrowPattern + '|' + todayPeriodPattern + '|today|hoy|tomorrow|mañana|manana|\\d{4}-\\d{2}-\\d{2}|' +
   weekdayPattern + '|' + monthDayPattern + ')';
 var dayClause = '(?:(?:on|el) )?(' + dayPattern + ')';
 var timeConnector = '(?:at|a las|a la|al)';
 var periodPattern = '(?:(?:in the )?(?:morning|afternoon|evening)|(?:at )?night|(?:en la|por la) (?:mañana|manana|tarde|noche))';
-var unitPattern = '(?:minutes?|minutos?|hours?|horas?)';
+var calendarUnitPattern = '(?:days?|días?|dias?|weeks?|semanas?)';
+var unitPattern = '(?:minutes?|minutos?|hours?|horas?|' + calendarUnitPattern + ')';
 var englishSmall = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split(' ');
 var spanishSmall = 'cero uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciséis diecisiete dieciocho diecinueve veinte veintiuno veintidós veintitrés veinticuatro veinticinco veintiséis veintisiete veintiocho veintinueve'.split(' ');
 var englishTens = 'twenty thirty forty fifty sixty seventy eighty ninety'.split(' ');
@@ -58,7 +61,8 @@ addNumber('veintiuna', 21);
 // Deliberately bounded vocabulary, not general natural-language interpretation:
 // written counts 1..99 (one language per count), or digits, with mixed-language
 // connectors/units. Relative digits retain the 1..10080 interval bound.
-// Clock words use hour [y minute], hour 0..23 / minute 0..59.
+// Clock words use hour [minute / y minute / y media / y cuarto], or quarter
+// past/to hour / hour menos cuarto. Numeric clocks still require a colon.
 // Unmarked hours 1..12 consider both AM and PM. Explicit periods retain their
 // bounds: AM/PM 1..12, mañana 1..11, tarde 1..7/13..19, noche 8..11/20..23.
 function number(value) {
@@ -72,11 +76,20 @@ function relativeInterval(count, unit) {
       (/^media$/i.test(count) && /^hora$/i.test(unit))) return 30 * MINUTE;
   count = /^(a|an)$/i.test(count) ? 1 : number(count);
   return count >= 1 && count <= 10080 ?
-    count * (/^(hour|hora)/i.test(unit) ? 60 : 1) * MINUTE : NaN;
+    count * (/^(hour|hora)/i.test(unit) ? 60 * MINUTE :
+      /^(day|día|dia)/i.test(unit) ? DAY : /^(week|semana)/i.test(unit) ? 7 * DAY : MINUTE) : NaN;
+}
+
+function englishClockNumber(value) {
+  if (englishSmall.indexOf(value) >= 0 || englishTens.indexOf(value) >= 0) return number(value);
+  var pieces = value.split(/[ -]/);
+  if (pieces.length === 2 && englishTens.indexOf(pieces[0]) >= 0 &&
+      englishSmall.indexOf(pieces[1]) >= 1 && englishSmall.indexOf(pieces[1]) <= 9) return number(value);
+  return NaN;
 }
 
 function clock(value) {
-  value = value.replace(/(\d) *: *(\d)/g, '$1:$2').replace(/([ap])\.m\.?$/i, '$1m');
+  value = value.replace(/(\d) *: *(\d)/g, '$1:$2').replace(/([ap]) *\.? *m\.?$/i, '$1m');
   if (/^(?:noon|mediodía|mediodia)$/i.test(value)) return [12, 0];
   var marker = / (am|pm|in the afternoon|in the evening|at night|de la mañana|de la manana|de la tarde|de la noche)$/i.exec(value);
   // Keep the original English grammar's optional space before AM/PM.
@@ -84,18 +97,42 @@ function clock(value) {
   var meridiem = marker && marker[1].toLowerCase();
   var body = (marker ? value.slice(0, marker.index).trim() : value).toLowerCase();
   var numeric = /^(\d{1,2})(?::(\d{2}))?$/.exec(body);
-  var hour, minute = 0;
+  var hour, minute = 0, subtractQuarter = false, hasMinutes = false, spokenClock = false;
   if (numeric) {
     hour = Number(numeric[1]);
     minute = numeric[2] === undefined ? 0 : Number(numeric[2]);
+    hasMinutes = numeric[2] !== undefined;
   } else {
     hour = number(body);
     if (isNaN(hour)) {
-      // "treinta y cinco" remains a single minute count, not another hour.
-      var split = body.indexOf(' y ');
-      if (split < 0) return null;
-      hour = number(body.slice(0, split));
-      minute = number(body.slice(split + 3));
+      var quarter = /^quarter (past|to) (.+)$|^(.+) menos cuarto$/.exec(body);
+      if (quarter) {
+        spokenClock = true;
+        hour = number(quarter[2] || quarter[3]);
+        subtractQuarter = quarter[1] === 'to' || !!quarter[3];
+        minute = subtractQuarter ? 45 : 15;
+      } else {
+        // "treinta y cinco" remains a single minute count, not another hour.
+        var split = body.indexOf(' y ');
+        if (split >= 0) {
+          hour = number(body.slice(0, split));
+          var remainder = body.slice(split + 3);
+          minute = remainder === 'media' ? 30 : remainder === 'cuarto' ? 15 : number(remainder);
+          spokenClock = remainder === 'media' || remainder === 'cuarto';
+        } else {
+          for (split = body.indexOf(' '); split >= 0; split = body.indexOf(' ', split + 1)) {
+            var spokenHour = englishClockNumber(body.slice(0, split));
+            var spokenMinute = englishClockNumber(body.slice(split + 1));
+            if (!isNaN(spokenHour) && !isNaN(spokenMinute)) {
+              hour = spokenHour;
+              minute = spokenMinute;
+              spokenClock = true;
+              break;
+            }
+          }
+        }
+      }
+      hasMinutes = true;
     }
   }
   if (isNaN(hour) || isNaN(minute) || minute < 0 || minute > 59 || hour < 0 || hour > 23) return null;
@@ -115,8 +152,17 @@ function clock(value) {
       else if (hour < 20 || hour > 23) return null;
     }
   }
+  var dayOffset = 0;
+  if (subtractQuarter) {
+    hour--;
+    if (hour < 0) {
+      hour += 24;
+      dayOffset = -1;
+    }
+  }
   if (inferMeridiem) hour %= 12;
-  return [hour, minute, inferMeridiem];
+  // Day offsets anchor "quarter to twelve AM" to the preceding calendar day.
+  return [hour, minute, inferMeridiem, dayOffset, hasMinutes, spokenClock];
 }
 
 function countLike(value) {
@@ -148,7 +194,8 @@ function competingSchedule(value) {
     var words = match[1].split(' ');
     for (var i = 1; i <= words.length; i++) {
       var clockValue = words.slice(0, i).join(' ').replace(/[,.!?;:)]*$/, '');
-      if (clock(clockValue) && (i === words.length || attemptedTime(clockValue))) return true;
+      var parsedClock = clock(clockValue);
+      if (parsedClock && (i === words.length || parsedClock[5] || attemptedTime(clockValue))) return true;
     }
     if (/^\d{1,2}(?= |:|$)/.test(match[1])) return true;
     // A second bare written clock conflicts too; require the complete phrase
@@ -191,7 +238,7 @@ function attemptedTime(value) {
     if (countLike(match[1])) return true;
     clocks.lastIndex = match.index + 1;
   }
-  var periods = new RegExp(boundary + '([^ ]+?) ?(?:am|pm|de la mañana|de la manana|de la tarde|de la noche)' + end, 'gi');
+  var periods = new RegExp(boundary + '([^ ]+?) ?(?:[ap] *\\.? *m\\.?|de la mañana|de la manana|de la tarde|de la noche)' + end, 'gi');
   while ((match = periods.exec(value))) {
     if (countLike(match[1])) return true;
   }
@@ -268,7 +315,7 @@ function localDisplay(instant) {
 }
 
 function stripPrompt(value) {
-  return value.replace(/^(?:(?:remind|reminde) me(?: to| about)?|remember to|(?:recuérdame|recuerdame|recuerda|recordarme|recordar)(?: que)?)(?:\s+|$)/i, '');
+  return value.replace(/^(?:(?:remind|reminde) me(?: to| about)?|remember to|don['’]t forget to|(?:recuérdame|recuerdame|recuerda|recordarme|recordar|avísame|avisame)(?: que)?|no olvides(?: que)?)(?:\s+|$)/i, '');
 }
 
 function timezoneQualifier(value) {
@@ -307,6 +354,15 @@ function draft(what, instant, reference) {
   };
 }
 
+function calendarDate(year, month, day, advance) {
+  var date = new Date(Date.UTC(year, month - 1, day + advance, 12));
+  return [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()];
+}
+
+function periodTime(period, amTime, pmTime) {
+  return /afternoon|evening|night|tarde|noche/i.test(period) ? pmTime : amTime;
+}
+
 function parse(text, reference, settings, preservedTitle) {
   var scheduleOnly = preservedTitle !== undefined;
   if (scheduleOnly) preservedTitle = title(preservedTitle);
@@ -324,7 +380,7 @@ function parse(text, reference, settings, preservedTitle) {
       /(?:^|[^a-záéíóúüñ])(?:cada|todos|todas|diariamente|semanalmente|mensualmente|anualmente|recurrentes?|repetir|diari[oa]s?|semanal(?:es)?|mensual(?:es)?|anual(?:es)?|próxim[oa]s?|proxim[oa]s?|siguientes?)(?=$|[^a-záéíóúüñ])/i.test(unsupported)) {
     fail('Use a single supported date and time, not a repeating expression.');
   }
-  if (/\b(?:after|before) tomorrow\b|\bpasado (?:mañana|manana)\b/i.test(input)) {
+  if (/\b(?:after|before) tomorrow\b/i.test(input.replace(new RegExp(afterTomorrowPattern, 'gi'), ''))) {
     fail('Use an explicit date for that expression.');
   }
   var relativePattern = new RegExp('^(?:in|en|dentro de) (.+) (' + unitPattern + ')[.!]?$', 'i');
@@ -351,8 +407,9 @@ function parse(text, reference, settings, preservedTitle) {
         fail('Use one clear schedule, like "tomorrow at 8 AM".');
       }
       candidates.push({
-        title: (leading[3] || '').replace(/^to(?: |$)/i, '').trim(),
+        title: stripPrompt(leading[3] || '').replace(/^to(?: |$)/i, '').trim(),
         interval: interval,
+        calendar: new RegExp('^' + calendarUnitPattern + '$', 'i').test(leading[2]),
         leading: true
       });
     }
@@ -366,7 +423,11 @@ function parse(text, reference, settings, preservedTitle) {
     if (relative) {
       interval = relativeInterval(relative[1], relative[2]);
       if (!isNaN(interval) && !(leading && index === 0)) {
-        candidates.push({ title: what, interval: interval });
+        candidates.push({
+          title: what,
+          interval: interval,
+          calendar: new RegExp('^' + calendarUnitPattern + '$', 'i').test(relative[2])
+        });
       }
     }
     if (absolute && (!/^(?:mañana|manana)$/i.test(absolute[1]) || !morningContext(what))) {
@@ -388,6 +449,7 @@ function parse(text, reference, settings, preservedTitle) {
   if (!candidates.some(function(candidate) { return !candidate.title; })) {
     var leadingSchedule;
     var completeClock;
+    var spokenClock;
     for (var end = 1; end <= input.length; end++) {
       if (end < input.length && input.charAt(end - 1) !== ' ' && input.charAt(end - 1) !== ',') continue;
       var prefix = input.slice(0, end).trim().replace(/,$/, '').trim();
@@ -413,7 +475,8 @@ function parse(text, reference, settings, preservedTitle) {
       }
       if (time) {
         var leadingTitle = input.slice(end).trim();
-        completeClock = /:| y /i.test(clockText) || (!time[2] && isNaN(number(clockText)));
+        completeClock = time[4] || (!time[2] && isNaN(number(clockText)));
+        spokenClock = time[5];
         leadingSchedule = {
           title: stripPrompt(leadingTitle).replace(/^to(?: |$)/i, ''),
           day: leadingDay,
@@ -425,7 +488,7 @@ function parse(text, reference, settings, preservedTitle) {
     if (leadingSchedule) {
       // Check before stripping the prompt so punctuation inside a title stays intact.
       // Malformed clock continuations must not fall back to a shorter valid hour.
-      if (invalidScheduleBoundary(leadingTitle, true, completeClock)) {
+      if (invalidScheduleBoundary(leadingTitle, true, completeClock && !spokenClock)) {
         fail('Use one clear schedule, like "tomorrow at 8 AM".');
       }
       candidates.push(leadingSchedule);
@@ -442,7 +505,7 @@ function parse(text, reference, settings, preservedTitle) {
       candidates.push({
         title: stripPrompt(remainder).replace(/^to(?: |$)/i, ''),
         day: firstDay[1].toLowerCase(),
-        time: dayPeriod && /afternoon|evening|night|tarde|noche/i.test(dayPeriod[0]) ? pmTime : amTime,
+        time: periodTime(dayPeriod ? dayPeriod[0] : firstDay[1], amTime, pmTime),
         leading: true
       });
     }
@@ -451,7 +514,7 @@ function parse(text, reference, settings, preservedTitle) {
       if (invalidScheduleBoundary(remainder, false)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
       candidates.push({
         title: stripPrompt(remainder).replace(/^to(?: |$)/i, ''),
-        time: /afternoon|evening|night|tarde|noche/i.test(firstPeriod[0]) ? pmTime : amTime,
+        time: periodTime(firstPeriod[0], amTime, pmTime),
         leading: true
       });
     }
@@ -466,20 +529,25 @@ function parse(text, reference, settings, preservedTitle) {
           candidates.push({
             title: what,
             day: lastPeriod[1].toLowerCase(),
-            time: /afternoon|evening|night|tarde|noche/i.test(lastPeriod[2]) ? pmTime : amTime
+            time: periodTime(lastPeriod[2], amTime, pmTime)
           });
         }
       }
     }
     if (!candidates.length) {
-      if (attemptedTime(input)) fail('Use one clear schedule, like "tomorrow at 8 AM".');
+      if (attemptedTime(input.replace(new RegExp(todayPeriodPattern, 'gi'), ''))) {
+        fail('Use one clear schedule, like "tomorrow at 8 AM".');
+      }
       var dayOnlyPattern = new RegExp('^' + dayClause + topic, 'i');
       for (index = 0; index < input.length; index++) {
         if (index && input.charAt(index - 1) !== ' ') continue;
         what = input.slice(0, index).trim();
         var dayOnly = dayOnlyPattern.exec(input.slice(index));
         if (dayOnly && !morningContext(what)) {
-          candidates.push({ title: what, tail: dayOnly[2] || '', day: dayOnly[1].toLowerCase(), time: amTime });
+          candidates.push({
+            title: what, tail: dayOnly[2] || '', day: dayOnly[1].toLowerCase(),
+            time: periodTime(dayOnly[1], amTime, pmTime)
+          });
         }
       }
     }
@@ -503,11 +571,15 @@ function parse(text, reference, settings, preservedTitle) {
       if (other.title.length >= candidate.title.length) return false;
       var extra = candidate.title.slice(other.title.length).trim();
       return /^(?:(?:on|el) )?(?:next|this|próximo|proximo)$|^(?:on|el)$/i.test(extra) ||
+        (other.day && extra.toLowerCase() + ' ' + candidate.day === other.day) ||
         (!candidate.day && other.day && new RegExp('^' + dayClause + '$', 'i').test(extra));
     });
   });
   if (candidates.length !== 1) fail('Use one clear schedule, like "tomorrow at 8 AM".');
   var selected = candidates[0];
+  if (!defaulted && new RegExp('^' + todayPeriodPattern + '$', 'i').test(selected.day || '')) {
+    fail('Use one clear schedule, like "today at 8 AM".');
+  }
   if (firstPeriod && !selected.leading) fail('Use one clear schedule, like "tomorrow at 8 AM".');
   if (firstDay && !selected.leading && selected.title &&
       (dayPeriod || stripPrompt(firstDay[2]) !== firstDay[2])) {
@@ -530,11 +602,22 @@ function parse(text, reference, settings, preservedTitle) {
       (defaulted && (containsDay(selected.title) || containsDay(tail)))) {
     fail('Use one clear schedule, like "tomorrow at 8 AM".');
   }
-  if (selected.interval) return draft(scheduleOnly ? preservedTitle : selected.title, reference + selected.interval, reference);
+  if (selected.interval) {
+    var relativeInstant = reference + selected.interval;
+    if (selected.calendar) {
+      var captured = new Date(reference);
+      var shifted = calendarDate(captured.getFullYear(), captured.getMonth() + 1,
+        captured.getDate(), selected.interval / DAY);
+      relativeInstant = resolveWall(shifted.concat([captured.getHours(), captured.getMinutes()])) +
+        captured.getSeconds() * 1000 + captured.getMilliseconds();
+    }
+    return draft(scheduleOnly ? preservedTitle : selected.title, relativeInstant, reference);
+  }
   var local = new Date(reference);
   var day = selected.day;
   var y = local.getFullYear(), m = local.getMonth() + 1, d = local.getDate();
-  var lastClockMinute = selected.time[0] * 60 + selected.time[1] + (selected.time[2] ? 12 * 60 : 0);
+  var lastClockMinute = selected.time[0] * 60 + selected.time[1] + (selected.time[2] ? 12 * 60 : 0) +
+    (day && selected.time[3] ? selected.time[3] * 24 * 60 : 0);
   var currentMinute = local.getHours() * 60 + local.getMinutes();
   var monthDay = day && new RegExp('^(' + monthNames + ') (\\d{1,2})$|^(\\d{1,2}) de (' + monthNames + ')$', 'i').exec(day);
   if (monthDay) {
@@ -554,7 +637,8 @@ function parse(text, reference, settings, preservedTitle) {
   } else if (day && /^\d{4}-/.test(day)) {
     var pieces = day.split('-');
     y = Number(pieces[0]); m = Number(pieces[1]); d = Number(pieces[2]);
-  } else if (!day || (day !== 'today' && day !== 'hoy')) {
+  } else if (!day || (day !== 'today' && day !== 'hoy' &&
+      !new RegExp('^' + todayPeriodPattern + '$', 'i').test(day))) {
     var next = day && /^(?:next|próximo|proximo) | que viene$/.test(day);
     var plainDay = day && day.replace(/^(?:next|this|próximo|proximo) /, '').replace(/ que viene$/, '');
     var weekday = -1;
@@ -563,10 +647,19 @@ function parse(text, reference, settings, preservedTitle) {
     });
     var advance;
     if (!day) advance = lastClockMinute <= currentMinute ? 1 : 0;
-    else advance = /^(tomorrow|mañana|manana)$/.test(day) ? 1 : (weekday - local.getDay() + 7) % 7;
+    else advance = new RegExp('^' + afterTomorrowPattern + '$', 'i').test(day) ? 2 :
+      /^(tomorrow|mañana|manana)$/.test(day) ? 1 : (weekday - local.getDay() + 7) % 7;
     if (next && !advance) advance = 7;
-    var target = new Date(y, m - 1, d + advance, 12);
-    y = target.getFullYear(); m = target.getMonth() + 1; d = target.getDate();
+    var target = calendarDate(y, m, d, advance);
+    y = target[0]; m = target[1]; d = target[2];
+  }
+  if (day && selected.time[3]) {
+    var anchor = new Date(Date.UTC(y, m - 1, d));
+    if (anchor.getUTCFullYear() !== y || anchor.getUTCMonth() !== m - 1 || anchor.getUTCDate() !== d) {
+      fail('Invalid date. Choose another date.');
+    }
+    target = calendarDate(y, m, d, selected.time[3]);
+    y = target[0]; m = target[1]; d = target[2];
   }
   var instant = resolveWall([y, m, d, selected.time[0], selected.time[1]]);
   if (selected.time[2] && instant <= reference) {

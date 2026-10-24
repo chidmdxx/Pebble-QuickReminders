@@ -133,6 +133,35 @@ test('presets migrate missing field only, validate strictly and do not alias arr
   }
 });
 
+test('recognition additions Timeline retries retain reviewed calendar instant and original pin identity', () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const f = fixture(), pin = f.add('Preserved Café'), code = pin.actions[0].launchCode;
+    const open = f.send('pin_open', { LAUNCH_CODE: code });
+    const draft = f.send('pin_time', { LAUNCH_CODE: code, TOKEN: open.TOKEN, TEXT: 'in two days' });
+    assert.equal(draft.WHEN, '2026-10-16 12:00 PM');
+    f.pebble.insertTimelinePin = () => { throw new Error('Synthetic API failure'); };
+    assert.throws(() => f.send('pin_confirm', { LAUNCH_CODE: code, TOKEN: draft.TOKEN }), /Synthetic/);
+    f.advance(3600000);
+    const reloaded = controller.create(f.storage, f.pebble, f.clock);
+    const pending = reloaded.handle({ COMMAND: 'pin_open', LAUNCH_CODE: code, TOKEN: draft.TOKEN });
+    assert.equal(pending.STATUS, 'pending');
+    assert.equal(f.pins.length, 1);
+    f.pebble.insertTimelinePin = value => f.pins.push(value);
+    reloaded.handle({ COMMAND: 'pin_retry', LAUNCH_CODE: code, TOKEN: draft.TOKEN });
+    assert.equal(f.pins.length, 2);
+    assert.equal(f.pins[1].id, pin.id);
+    assert.equal(f.pins[1].layout.title, 'Preserved Café');
+    assert.equal(f.pins[1].time, '2026-10-16T12:00:00.000Z');
+    assert.equal(f.pins[1].reminders.length, 1);
+    assert.equal(f.pins[1].reminders[0].time, f.pins[1].time);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
 test('two-days-past cleanup follows insertion, preserves future/active identities and monotonic allocation', () => {
   const f = fixture();
   const deleted = [];
