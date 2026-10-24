@@ -1,0 +1,13 @@
+instructions: |
+  Before implementing, reviewing, or building Pebble app changes, read and follow
+  .github/skills/pebble-development/SKILL.md.
+  For reminder grammar, title extraction, or scheduling changes, also read and
+  follow .github/skills/phrase-pattern-improvements/SKILL.md.
+  Use the live Markdown API references linked by the Pebble skill before changing
+  SDK calls. Official agent guidance:
+  https://developer.repebble.com/guides/ai-agents.md
+  Upstream watchface/watchapp skill reference:
+  https://github.com/coredevices/pebble-watchface-agent-skill/blob/main/skills/pebble-watchface/SKILL.md
+  Apply these references to this existing C watchapp and PebbleKit JS companion;
+  do not replace its architecture or six-target support with upstream defaults.
+  Follow CONTRIBUTING.md for contribution, privacy, and owner-authorization rules.

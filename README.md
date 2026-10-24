@@ -56,6 +56,8 @@ Uncertain insertions reopen for explicit, exact-payload retry; nothing replays a
 
 This action requires a companion supporting local `openWatchApp` pin actions. Older pins do not acquire an action automatically; legacy recovery migrates locally without rewriting Timeline. Missing or expired lookup entries fail visibly. The reminder popup's built-in 10-minute Snooze is separate from this custom Timeline action.
 
+**Companion compatibility:** the current [local-pins guide](https://developer.repebble.com/guides/pebble-timeline/timeline-local-pins.md#unsupported-fields) documents custom `actions` as ignored. On a companion with that behavior, **Change time** will not appear; its support must be checked on the actual companion/watch combination. Passing payload tests or building the app does not establish support for this action.
+
 After a successful insertion call, the phone prunes hidden lookup entries **more than two days past their scheduled time**. It keeps future reminders, active recovery/edit records, and uncertain API calls. Cleanup does not run just because you open the app and never deletes Timeline pins. Storage failures are visible; there is no count-based eviction.
 
 ## Upgrade compatibility
